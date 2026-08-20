@@ -283,6 +283,28 @@ class HotelPhoto {
       );
 }
 
+class HotelReview {
+  final String? title;
+  final String? pros;
+  final String? cons;
+  final String? authorName;
+  final String? authorType;
+  final String? authorCountry;
+  final String? date;
+
+  HotelReview({this.title, this.pros, this.cons, this.authorName, this.authorType, this.authorCountry, this.date});
+
+  factory HotelReview.fromJson(Map<String, dynamic> j) => HotelReview(
+        title: j['title'],
+        pros: j['pros'],
+        cons: j['cons'],
+        authorName: j['author_name'],
+        authorType: j['author_type'],
+        authorCountry: j['author_country'],
+        date: j['date'],
+      );
+}
+
 class CheckinKiosk {
   final String kioskId;
   final String locationId;

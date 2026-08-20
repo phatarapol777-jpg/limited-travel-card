@@ -114,6 +114,15 @@ router.get('/hotels/:externalHotelId/photos', async (req, res) => {
   }
 });
 
+router.get('/hotels/:externalHotelId/reviews', async (req, res) => {
+  try {
+    const reviews = await bookingCom.getHotelReviews(req.params.externalHotelId);
+    res.json({ reviews: reviews.slice(0, 10) });
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'Failed to fetch hotel reviews' });
+  }
+});
+
 router.post('/request', authMiddleware, (req, res) => {
   const { offer_id, guest_name } = req.body || {};
   const offer = db.prepare('SELECT * FROM hotel_offers WHERE offer_id = ?').get(offer_id);

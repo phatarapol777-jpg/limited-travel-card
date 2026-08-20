@@ -79,4 +79,25 @@ async function getHotelPhotos(hotelId) {
   }));
 }
 
-module.exports = { searchHotels, getHotelPhotos };
+async function getHotelReviews(hotelId) {
+  const data = await bookingGet('/v1/hotels/reviews', {
+    hotel_id: hotelId,
+    locale: 'en-gb',
+    sort_type: 'SORT_MOST_RELEVANT',
+    language_filter: 'en-gb',
+    page_number: 0,
+  });
+  return (data.result || []).map((r) => ({
+    review_id: r.review_id,
+    title: r.title || null,
+    pros: r.pros || null,
+    cons: r.cons || null,
+    score: typeof r.average_score === 'number' ? r.average_score : null,
+    author_name: r.author?.name || null,
+    author_type: r.author?.type_string || null,
+    author_country: r.author?.countrycode || null,
+    date: r.date || null,
+  }));
+}
+
+module.exports = { searchHotels, getHotelPhotos, getHotelReviews };

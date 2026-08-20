@@ -21,11 +21,14 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
   List<HotelPhoto> _photos = [];
   bool _loadingPhotos = true;
   int _photoIndex = 0;
+  List<HotelReview> _reviews = [];
+  bool _loadingReviews = true;
 
   @override
   void initState() {
     super.initState();
     _loadPhotos();
+    _loadReviews();
   }
 
   @override
@@ -50,6 +53,24 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
       });
     } catch (e) {
       setState(() => _loadingPhotos = false);
+    }
+  }
+
+  Future<void> _loadReviews() async {
+    final hotelId = widget.offer.externalHotelId;
+    if (hotelId == null) {
+      setState(() => _loadingReviews = false);
+      return;
+    }
+    try {
+      final data = await apiClient.get('/booking/hotels/$hotelId/reviews');
+      final reviews = (data['reviews'] as List).map((e) => HotelReview.fromJson(e)).toList();
+      setState(() {
+        _reviews = reviews;
+        _loadingReviews = false;
+      });
+    } catch (e) {
+      setState(() => _loadingReviews = false);
     }
   }
 
@@ -251,10 +272,84 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                       onPressed: _openInBooking,
                     ),
                   ],
+                  const SizedBox(height: 28),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'รีวิวจากผู้เข้าพัก${offer.reviewCount != null ? ' (${offer.reviewCount})' : ''}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_loadingReviews)
+                    const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+                  else if (_reviews.isEmpty)
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('ยังไม่มีรีวิว', style: TextStyle(color: Colors.grey)))
+                  else
+                    ..._reviews.map((r) => _ReviewCard(review: r)),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewCard extends StatelessWidget {
+  final HotelReview review;
+  const _ReviewCard({required this.review});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(radius: 14, backgroundColor: AppColors.navy, child: Text((review.authorName?.isNotEmpty ?? false) ? review.authorName![0] : '?', style: const TextStyle(color: Colors.white, fontSize: 12))),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(review.authorName ?? 'ผู้เข้าพัก', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    if (review.authorType != null || review.authorCountry != null)
+                      Text(
+                        [review.authorType, review.authorCountry?.toUpperCase()].whereType<String>().join(' · '),
+                        style: const TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ),
+              if (review.date != null)
+                Text(review.date!.split(' ').first, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            ],
+          ),
+          if (review.title != null && review.title!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(review.title!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          ],
+          if (review.pros != null && review.pros!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.add_circle, size: 14, color: AppColors.success),
+              const SizedBox(width: 6),
+              Expanded(child: Text(review.pros!, style: const TextStyle(fontSize: 13))),
+            ]),
+          ],
+          if (review.cons != null && review.cons!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.remove_circle, size: 14, color: Colors.redAccent),
+              const SizedBox(width: 6),
+              Expanded(child: Text(review.cons!, style: const TextStyle(fontSize: 13))),
+            ]),
+          ],
         ],
       ),
     );

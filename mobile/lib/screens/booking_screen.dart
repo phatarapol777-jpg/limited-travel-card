@@ -149,47 +149,105 @@ class _BookingScreenState extends State<BookingScreen> {
                             itemCount: _hotels.length,
                             itemBuilder: (ctx, i) {
                               final h = _hotels[i];
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                clipBehavior: Clip.antiAlias,
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.all(8),
-                                  leading: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: SizedBox(
-                                      width: 56,
-                                      height: 56,
-                                      child: h.photoUrl != null
-                                          ? Image.network(
-                                              h.photoUrl!,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white)),
-                                            )
-                                          : Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white)),
-                                    ),
-                                  ),
-                                  title: Text(h.hotelName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text(h.roomDescription ?? 'ห้องพักมาตรฐาน', maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  trailing: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        h.priceAmount != null ? h.priceAmount!.toStringAsFixed(0) : '-',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navy),
-                                      ),
-                                      Text(h.priceCurrency ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                    ],
-                                  ),
-                                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                                        builder: (_) => HotelDetailScreen(offer: h, checkIn: _checkIn, checkOut: _checkOut),
-                                      )),
-                                ),
+                              return _HotelResultCard(
+                                offer: h,
+                                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (_) => HotelDetailScreen(offer: h, checkIn: _checkIn, checkOut: _checkOut),
+                                    )),
                               );
                             },
                           ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HotelResultCard extends StatelessWidget {
+  final HotelOffer offer;
+  final VoidCallback onTap;
+  const _HotelResultCard({required this.offer, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: offer.largePhotoUrl != null
+                  ? Image.network(
+                      offer.largePhotoUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 48)),
+                    )
+                  : Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 48)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(offer.hotelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  if (offer.starClass != null && offer.starClass! > 0) ...[
+                    const SizedBox(height: 4),
+                    Row(children: List.generate(offer.starClass!, (_) => const Icon(Icons.star, size: 14, color: Colors.amber))),
+                  ],
+                  const SizedBox(height: 6),
+                  if (offer.address != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text(offer.address!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 12))),
+                      ],
+                    ),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (offer.reviewScore != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(6)),
+                          child: Text(offer.reviewScore!.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                        const SizedBox(width: 8),
+                        if (offer.reviewScoreWord != null)
+                          Flexible(
+                            child: Text(
+                              '${offer.reviewScoreWord}${offer.reviewCount != null ? ' (${offer.reviewCount})' : ''}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      const Spacer(),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            offer.priceAmount != null ? offer.priceAmount!.toStringAsFixed(0) : '-',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.navy),
+                          ),
+                          Text(offer.priceCurrency ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
