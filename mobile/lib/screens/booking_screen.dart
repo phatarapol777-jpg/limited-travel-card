@@ -164,89 +164,177 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 }
 
-class _HotelResultCard extends StatelessWidget {
+class _HotelResultCard extends StatefulWidget {
   final HotelOffer offer;
   final VoidCallback onTap;
   const _HotelResultCard({required this.offer, required this.onTap});
 
   @override
+  State<_HotelResultCard> createState() => _HotelResultCardState();
+}
+
+class _HotelResultCardState extends State<_HotelResultCard> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  List<String> _photoUrls = [];
+  int _photoIndex = 0;
+  final _pageController = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+    final fallback = widget.offer.photoUrl;
+    if (fallback != null) _photoUrls = [fallback];
+    _loadPhotos();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPhotos() async {
+    final hotelId = widget.offer.externalHotelId;
+    if (hotelId == null) return;
+    try {
+      final data = await apiClient.get('/booking/hotels/$hotelId/photos');
+      final urls = (data['photos'] as List).map((e) => HotelPhoto.fromJson(e).thumbUrl).whereType<String>().take(5).toList();
+      if (mounted && urls.isNotEmpty) setState(() => _photoUrls = urls);
+    } catch (_) {
+      // keep the single fallback photo already shown
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
+    final offer = widget.offer;
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       elevation: 2,
       child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 180,
-              width: double.infinity,
-              child: offer.largePhotoUrl != null
-                  ? Image.network(
-                      offer.largePhotoUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 48)),
-                    )
-                  : Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 48)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(offer.hotelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  if (offer.starClass != null && offer.starClass! > 0) ...[
-                    const SizedBox(height: 4),
-                    Row(children: List.generate(offer.starClass!, (_) => const Icon(Icons.star, size: 14, color: Colors.amber))),
-                  ],
-                  const SizedBox(height: 6),
-                  if (offer.address != null)
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Expanded(child: Text(offer.address!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 12))),
-                      ],
-                    ),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+        onTap: widget.onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: IntrinsicHeight(
+            child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 110,
+                  height: 110,
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      if (offer.reviewScore != null) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(6)),
-                          child: Text(offer.reviewScore!.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      if (_photoUrls.isEmpty)
+                        Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 32))
+                      else
+                        PageView.builder(
+                          controller: _pageController,
+                          itemCount: _photoUrls.length,
+                          onPageChanged: (i) => setState(() => _photoIndex = i),
+                          itemBuilder: (ctx, i) => Image.network(
+                            _photoUrls[i],
+                            fit: BoxFit.cover,
+                            errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 32)),
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        if (offer.reviewScoreWord != null)
-                          Flexible(
-                            child: Text(
-                              '${offer.reviewScoreWord}${offer.reviewCount != null ? ' (${offer.reviewCount})' : ''}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis,
+                      if (_photoUrls.length > 1)
+                        Positioned(
+                          bottom: 5,
+                          left: 0,
+                          right: 0,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(
+                              _photoUrls.length,
+                              (i) => Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                                width: 5,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: i == _photoIndex ? Colors.white : Colors.white54,
+                                ),
+                              ),
                             ),
                           ),
-                      ],
-                      const Spacer(),
-                      Column(
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(offer.hotelName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    if (offer.starClass != null && offer.starClass! > 0) ...[
+                      const SizedBox(height: 2),
+                      Row(children: List.generate(offer.starClass!, (_) => const Icon(Icons.star, size: 11, color: Colors.amber))),
+                    ],
+                    if (offer.address != null) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                          const SizedBox(width: 3),
+                          Expanded(child: Text(offer.address!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 11))),
+                        ],
+                      ),
+                    ],
+                    if (offer.reviewScore != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(5)),
+                            child: Text(offer.reviewScore!.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                          ),
+                          const SizedBox(width: 6),
+                          if (offer.reviewScoreWord != null)
+                            Flexible(
+                              child: Text(
+                                '${offer.reviewScoreWord}${offer.reviewCount != null ? ' (${offer.reviewCount})' : ''}',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                    const Spacer(),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             offer.priceAmount != null ? offer.priceAmount!.toStringAsFixed(0) : '-',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.navy),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: AppColors.navy),
                           ),
-                          Text(offer.priceCurrency ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          const SizedBox(width: 3),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(offer.priceCurrency ?? '', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                          ),
                         ],
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
+            ],
             ),
-          ],
+          ),
         ),
       ),
     );
