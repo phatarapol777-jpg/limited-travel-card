@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS checkin_sessions (
   location_id TEXT NOT NULL REFERENCES locations(location_id),
   user_id TEXT REFERENCES users(user_id),
   status TEXT NOT NULL,
+  face_photo TEXT,
   result_json TEXT,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL

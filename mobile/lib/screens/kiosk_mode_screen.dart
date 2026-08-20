@@ -1,13 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
-import '../widgets/face_scan_widget.dart';
 import '../widgets/travel_card_tile.dart';
 
-enum _KioskStage { pickLocation, awaitingScan, awaitingFace, verifying, success, error }
+enum _KioskStage { pickLocation, awaitingScan, awaitingFace, capturing, verifying, success, error }
 
 class KioskModeScreen extends StatefulWidget {
   const KioskModeScreen({super.key});
@@ -29,6 +31,9 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   Map<String, dynamic>? _result;
   Timer? _pollTimer;
 
+  CameraController? _cameraController;
+  Uint8List? _capturedPhotoBytes;
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +43,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _cameraController?.dispose();
     super.dispose();
   }
 
@@ -60,6 +66,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       _errorMessage = null;
       _travelerName = null;
       _result = null;
+      _capturedPhotoBytes = null;
     });
     try {
       final data = await apiClient.post('/kiosk/session', {'kiosk_id': _selectedKiosk!.kioskId});
@@ -82,13 +89,13 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     try {
       final data = await apiClient.get('/kiosk/session/$_sessionId');
       final status = data['status'];
-      if (status == 'awaiting_face' && _stage != _KioskStage.awaitingFace && _stage != _KioskStage.verifying) {
+      if (status == 'awaiting_face' && _stage == _KioskStage.awaitingScan) {
         _pollTimer?.cancel();
         setState(() {
           _stage = _KioskStage.awaitingFace;
           _travelerName = data['user'] != null ? '${data['user']['first_name']} ${data['user']['last_name']}' : null;
         });
-        _runFaceVerification();
+        _runFaceCapture();
       } else if (status == 'expired') {
         _pollTimer?.cancel();
         setState(() {
@@ -101,12 +108,47 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     }
   }
 
-  Future<void> _runFaceVerification() async {
-    setState(() => _stage = _KioskStage.verifying);
-    await Future.delayed(const Duration(seconds: 3));
-    if (!mounted) return;
+  Future<void> _runFaceCapture() async {
     try {
-      await apiClient.post('/kiosk/session/$_sessionId/verify-face');
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        setState(() {
+          _stage = _KioskStage.error;
+          _errorMessage = 'ไม่พบกล้องบนอุปกรณ์นี้ ไม่สามารถสแกนใบหน้าได้';
+        });
+        return;
+      }
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+      final controller = CameraController(camera, ResolutionPreset.medium, enableAudio: false);
+      await controller.initialize();
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _cameraController = controller;
+      });
+
+      // Give the traveler a moment to position their face in frame.
+      await Future.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+
+      setState(() => _stage = _KioskStage.capturing);
+      final photo = await controller.takePicture();
+      final bytes = await photo.readAsBytes();
+      await controller.dispose();
+      if (!mounted) return;
+      setState(() {
+        _cameraController = null;
+        _capturedPhotoBytes = bytes;
+        _stage = _KioskStage.verifying;
+      });
+
+      final base64Photo = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      await apiClient.post('/kiosk/session/$_sessionId/verify-face', {'photo_base64': base64Photo});
       final data = await apiClient.post('/kiosk/session/$_sessionId/complete');
       if (!mounted) return;
       setState(() {
@@ -117,13 +159,14 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       if (!mounted) return;
       setState(() {
         _stage = _KioskStage.error;
-        _errorMessage = 'ยืนยันตัวตนไม่สำเร็จ: $e';
+        _errorMessage = 'เปิดกล้องหรือยืนยันตัวตนไม่สำเร็จ: $e';
       });
     }
   }
 
   void _reset() {
     _pollTimer?.cancel();
+    _cameraController?.dispose();
     setState(() {
       _stage = _KioskStage.pickLocation;
       _sessionId = null;
@@ -131,6 +174,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       _travelerName = null;
       _errorMessage = null;
       _result = null;
+      _cameraController = null;
+      _capturedPhotoBytes = null;
     });
   }
 
@@ -216,8 +261,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
         );
 
       case _KioskStage.awaitingFace:
-      case _KioskStage.verifying:
-        final complete = false;
+      case _KioskStage.capturing:
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -225,9 +269,38 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
               Text('สวัสดีคุณ $_travelerName', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
             ],
-            FaceScanWidget(complete: complete),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                width: 260,
+                height: 260,
+                child: _cameraController != null && _cameraController!.value.isInitialized
+                    ? CameraPreview(_cameraController!)
+                    : const ColoredBox(color: Colors.black26, child: Center(child: CircularProgressIndicator(color: Colors.white))),
+              ),
+            ),
             const SizedBox(height: 12),
-            const Text('กำลังสแกนใบหน้าเพื่อยืนยันตัวตนกับฐานข้อมูล...', style: TextStyle(color: Colors.white70)),
+            Text(
+              _stage == _KioskStage.capturing ? 'กำลังถ่ายภาพ...' : 'กำลังเปิดกล้องเพื่อสแกนใบหน้า จัดตำแหน่งใบหน้าให้อยู่ในกรอบ',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        );
+
+      case _KioskStage.verifying:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_capturedPhotoBytes != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.memory(_capturedPhotoBytes!, width: 220, height: 220, fit: BoxFit.cover),
+              ),
+            const SizedBox(height: 16),
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 12),
+            const Text('กำลังยืนยันตัวตนกับฐานข้อมูล...', style: TextStyle(color: Colors.white70)),
           ],
         );
 
@@ -236,8 +309,14 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle, color: AppColors.success, size: 64),
+            if (_capturedPhotoBytes != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(50),
+                child: Image.memory(_capturedPhotoBytes!, width: 72, height: 72, fit: BoxFit.cover),
+              ),
             const SizedBox(height: 12),
+            const Icon(Icons.check_circle, color: AppColors.success, size: 48),
+            const SizedBox(height: 8),
             Text('เช็คอินสำเร็จ${_travelerName != null ? ' คุณ$_travelerName' : ''}',
                 style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
             if (awarded.isNotEmpty) ...[

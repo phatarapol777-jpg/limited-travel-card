@@ -65,7 +65,9 @@ router.post('/session/:id/verify-face', (req, res) => {
   if (!session) return;
   if (session.status !== 'awaiting_face') return res.status(400).json({ error: 'สถานะเซสชันไม่ถูกต้อง' });
 
-  db.prepare("UPDATE checkin_sessions SET status = 'verified' WHERE session_id = ?").run(session.session_id);
+  const { photo_base64 } = req.body || {};
+  db.prepare("UPDATE checkin_sessions SET status = 'verified', face_photo = ? WHERE session_id = ?")
+    .run(photo_base64 || null, session.session_id);
   res.json({ status: 'verified' });
 });
 
