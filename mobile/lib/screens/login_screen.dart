@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../theme.dart';
 import 'register_screen.dart';
 import 'home_shell.dart';
+import 'kiosk_mode_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -101,6 +102,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     'demo_traveler / demo1234 (บัญชีตัวอย่าง)',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    icon: const Icon(Icons.point_of_sale, size: 18, color: Colors.grey),
+                    label: const Text('โหมดเครื่องยืนยันตัวตน (สำหรับเจ้าหน้าที่/Kiosk)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const KioskModeScreen())),
                   ),
                 ],
               ),

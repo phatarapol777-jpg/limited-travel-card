@@ -5,8 +5,8 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
-import 'checkin_screen.dart';
 import 'booking_screen.dart';
+import 'scan_kiosk_screen.dart';
 
 class MapMissionsScreen extends StatefulWidget {
   const MapMissionsScreen({super.key});
@@ -94,7 +94,7 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
                       label: const Text('Check-in ที่นี่'),
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => CheckinScreen(location: loc)));
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanKioskScreen(location: loc)));
                       },
                     ),
                   ),

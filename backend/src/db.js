@@ -179,6 +179,17 @@ CREATE TABLE IF NOT EXISTS booking_requests (
   status TEXT NOT NULL,
   requested_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS checkin_sessions (
+  session_id TEXT PRIMARY KEY,
+  kiosk_id TEXT NOT NULL REFERENCES checkin_kiosks(kiosk_id),
+  location_id TEXT NOT NULL REFERENCES locations(location_id),
+  user_id TEXT REFERENCES users(user_id),
+  status TEXT NOT NULL,
+  result_json TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
 `);
 
 module.exports = db;

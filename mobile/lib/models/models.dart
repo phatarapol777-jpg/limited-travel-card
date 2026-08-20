@@ -238,3 +238,27 @@ class HotelOffer {
         roomDescription: j['room_description'],
       );
 }
+
+class CheckinKiosk {
+  final String kioskId;
+  final String locationId;
+  final String locationName;
+  final String province;
+  final String status;
+
+  CheckinKiosk({
+    required this.kioskId,
+    required this.locationId,
+    required this.locationName,
+    required this.province,
+    required this.status,
+  });
+
+  factory CheckinKiosk.fromJson(Map<String, dynamic> j) => CheckinKiosk(
+        kioskId: j['kiosk_id'],
+        locationId: j['location_id'],
+        locationName: j['location_name'],
+        province: j['province'],
+        status: j['status'] ?? 'online',
+      );
+}
