@@ -5,6 +5,7 @@ class AppUser {
   final String lastName;
   final String email;
   final String? phone;
+  final bool isAdmin;
 
   AppUser({
     required this.userId,
@@ -13,6 +14,7 @@ class AppUser {
     required this.lastName,
     required this.email,
     this.phone,
+    this.isAdmin = false,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -22,6 +24,7 @@ class AppUser {
         lastName: j['last_name'],
         email: j['email'],
         phone: j['phone'],
+        isAdmin: j['is_admin'] == 1 || j['is_admin'] == true,
       );
 }
 

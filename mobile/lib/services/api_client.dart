@@ -51,6 +51,16 @@ class ApiClient {
     final res = await http.post(_u(path), headers: _headers(), body: jsonEncode(body ?? {}));
     return _decode(res);
   }
+
+  Future<dynamic> put(String path, [Map<String, dynamic>? body]) async {
+    final res = await http.put(_u(path), headers: _headers(), body: jsonEncode(body ?? {}));
+    return _decode(res);
+  }
+
+  Future<dynamic> delete(String path) async {
+    final res = await http.delete(_u(path), headers: _headers());
+    return _decode(res);
+  }
 }
 
 final apiClient = ApiClient();

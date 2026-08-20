@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../services/app_state.dart';
 import '../theme.dart';
 import 'login_screen.dart';
+import 'admin_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -99,6 +100,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _StatBox(label: 'ภารกิจ', value: '${stats?.missionsCompleted ?? 0}'),
                     ],
                   ),
+                  if (user?.isAdmin == true) ...[
+                    const SizedBox(height: 20),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.admin_panel_settings, color: AppColors.navy),
+                        title: const Text('จัดการสถานที่ (Admin)'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminScreen())),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   const Text('ประวัติการเดินทาง', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),

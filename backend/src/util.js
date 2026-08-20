@@ -34,10 +34,15 @@ function authMiddleware(req, res, next) {
   next();
 }
 
+function adminMiddleware(req, res, next) {
+  if (!req.user || !req.user.is_admin) return res.status(403).json({ error: 'Admin access required' });
+  next();
+}
+
 function publicUser(user) {
   if (!user) return null;
   const { password_hash, password_salt, ...rest } = user;
   return rest;
 }
 
-module.exports = { newId, hashPassword, verifyPassword, createSession, authMiddleware, publicUser };
+module.exports = { newId, hashPassword, verifyPassword, createSession, authMiddleware, adminMiddleware, publicUser };

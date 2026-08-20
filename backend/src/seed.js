@@ -96,6 +96,11 @@ function seed() {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(demoUserId, 'demo_traveler', hash, salt, 'สมชาย', 'นักเดินทาง', 'demo@travelcard.app', '080-000-0000', null, now);
 
+  const { hash: adminHash, salt: adminSalt } = hashPassword('admin1234');
+  db.prepare(`INSERT INTO users (user_id, username, password_hash, password_salt, first_name, last_name, email, phone, face_data, is_admin, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`)
+    .run(newId('usr'), 'admin', adminHash, adminSalt, 'ผู้ดูแล', 'ระบบ', 'admin@travelcard.app', null, null, now);
+
   const insertAllCard = db.prepare(`INSERT INTO all_cards (card_instance_id, template_id, owner_user_id, unique_code, acquired_at)
     VALUES (?, ?, ?, ?, ?)`);
   [0, 1, 6].forEach((tplIdx) => {
