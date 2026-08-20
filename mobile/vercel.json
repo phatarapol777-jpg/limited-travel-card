@@ -1,0 +1,4 @@
+{
+  "buildCommand": "echo 'Flutter web is pre-built locally, nothing to build'",
+  "outputDirectory": "build/web"
+}

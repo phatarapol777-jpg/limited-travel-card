@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: limited-travel-card-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
