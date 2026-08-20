@@ -80,6 +80,7 @@ router.get('/hotels', async (req, res) => {
       );
       results.push({
         offer_id: offerId,
+        external_hotel_id: externalHotelId,
         hotel_name: hotelName,
         price_amount: priceAmount,
         price_currency: currency,
@@ -101,6 +102,15 @@ router.get('/hotels', async (req, res) => {
     res.json({ search_id: searchId, city_code: location.city_code, check_in_date: checkInDate, check_out_date: checkOutDate, hotels: results });
   } catch (err) {
     res.status(502).json({ error: err.message || 'Failed to fetch hotel data' });
+  }
+});
+
+router.get('/hotels/:externalHotelId/photos', async (req, res) => {
+  try {
+    const photos = await bookingCom.getHotelPhotos(req.params.externalHotelId);
+    res.json({ photos: photos.slice(0, 12) });
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'Failed to fetch hotel photos' });
   }
 });
 

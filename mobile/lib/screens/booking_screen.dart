@@ -181,7 +181,9 @@ class _BookingScreenState extends State<BookingScreen> {
                                       Text(h.priceCurrency ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                     ],
                                   ),
-                                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HotelDetailScreen(offer: h))),
+                                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                        builder: (_) => HotelDetailScreen(offer: h, checkIn: _checkIn, checkOut: _checkOut),
+                                      )),
                                 ),
                               );
                             },

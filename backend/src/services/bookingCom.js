@@ -30,14 +30,18 @@ async function bookingGetOnce(path, params) {
 }
 
 // The upstream Booking.com wrapper occasionally throws a transient
-// "authentication token invalid" error that clears up on immediate retry.
+// "authentication token invalid" error that clears up on retry.
 async function bookingGet(path, params) {
-  try {
-    return await bookingGetOnce(path, params);
-  } catch (e) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return bookingGetOnce(path, params);
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+    try {
+      return await bookingGetOnce(path, params);
+    } catch (e) {
+      lastError = e;
+    }
   }
+  throw lastError;
 }
 
 async function resolveDestId(cityName) {
@@ -67,4 +71,12 @@ async function searchHotels({ cityName, checkInDate, checkOutDate, adults }) {
   return (data.result || []).filter((h) => h.hotel_id);
 }
 
-module.exports = { searchHotels };
+async function getHotelPhotos(hotelId) {
+  const photos = await bookingGet('/v1/hotels/photos', { hotel_id: hotelId, locale: 'en-gb' });
+  return (photos || []).map((p) => ({
+    thumb_url: p.url_square60 || null,
+    large_url: p.url_max || p.url_1440 || null,
+  }));
+}
+
+module.exports = { searchHotels, getHotelPhotos };

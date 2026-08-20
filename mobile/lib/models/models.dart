@@ -220,6 +220,7 @@ class TravelHistoryEntry {
 
 class HotelOffer {
   final String offerId;
+  final String? externalHotelId;
   final String hotelName;
   final double? priceAmount;
   final String? priceCurrency;
@@ -236,6 +237,7 @@ class HotelOffer {
 
   HotelOffer({
     required this.offerId,
+    this.externalHotelId,
     required this.hotelName,
     this.priceAmount,
     this.priceCurrency,
@@ -253,6 +255,7 @@ class HotelOffer {
 
   factory HotelOffer.fromJson(Map<String, dynamic> j) => HotelOffer(
         offerId: j['offer_id'],
+        externalHotelId: j['external_hotel_id']?.toString(),
         hotelName: j['hotel_name'],
         priceAmount: (j['price_amount'] as num?)?.toDouble(),
         priceCurrency: j['price_currency'],
@@ -266,6 +269,17 @@ class HotelOffer {
         reviewCount: (j['review_count'] as num?)?.toInt(),
         distanceToCenter: j['distance_to_center'],
         bookingUrl: j['booking_url'],
+      );
+}
+
+class HotelPhoto {
+  final String? thumbUrl;
+  final String? largeUrl;
+  HotelPhoto({this.thumbUrl, this.largeUrl});
+
+  factory HotelPhoto.fromJson(Map<String, dynamic> j) => HotelPhoto(
+        thumbUrl: j['thumb_url'],
+        largeUrl: j['large_url'],
       );
 }
 

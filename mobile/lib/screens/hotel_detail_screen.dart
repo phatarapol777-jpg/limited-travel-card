@@ -6,7 +6,9 @@ import '../theme.dart';
 
 class HotelDetailScreen extends StatefulWidget {
   final HotelOffer offer;
-  const HotelDetailScreen({super.key, required this.offer});
+  final DateTime? checkIn;
+  final DateTime? checkOut;
+  const HotelDetailScreen({super.key, required this.offer, this.checkIn, this.checkOut});
 
   @override
   State<HotelDetailScreen> createState() => _HotelDetailScreenState();
@@ -14,12 +16,47 @@ class HotelDetailScreen extends StatefulWidget {
 
 class _HotelDetailScreenState extends State<HotelDetailScreen> {
   final _nameCtrl = TextEditingController();
+  final _pageController = PageController();
   bool _requesting = false;
+  List<HotelPhoto> _photos = [];
+  bool _loadingPhotos = true;
+  int _photoIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhotos();
+  }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPhotos() async {
+    final hotelId = widget.offer.externalHotelId;
+    if (hotelId == null) {
+      setState(() => _loadingPhotos = false);
+      return;
+    }
+    try {
+      final data = await apiClient.get('/booking/hotels/$hotelId/photos');
+      final photos = (data['photos'] as List).map((e) => HotelPhoto.fromJson(e)).toList();
+      setState(() {
+        _photos = photos;
+        _loadingPhotos = false;
+      });
+    } catch (e) {
+      setState(() => _loadingPhotos = false);
+    }
+  }
+
+  int? get _nights {
+    if (widget.checkIn == null || widget.checkOut == null) return null;
+    final n = widget.checkOut!.difference(widget.checkIn!).inDays;
+    return n > 0 ? n : null;
   }
 
   Future<void> _openInBooking() async {
@@ -50,23 +87,68 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
     }
   }
 
+  String _fmtDate(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
   @override
   Widget build(BuildContext context) {
     final offer = widget.offer;
+    final galleryUrls = _photos.isNotEmpty
+        ? _photos.map((p) => p.largeUrl).whereType<String>().toList()
+        : (offer.largePhotoUrl != null ? [offer.largePhotoUrl!] : <String>[]);
+    final nights = _nights;
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 220,
+            expandedHeight: 240,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: offer.largePhotoUrl != null
-                  ? Image.network(
-                      offer.largePhotoUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 64)),
-                    )
-                  : Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 64)),
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (galleryUrls.isEmpty)
+                    Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 64))
+                  else
+                    PageView.builder(
+                      controller: _pageController,
+                      itemCount: galleryUrls.length,
+                      onPageChanged: (i) => setState(() => _photoIndex = i),
+                      itemBuilder: (ctx, i) => Image.network(
+                        galleryUrls[i],
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white54, size: 64)),
+                      ),
+                    ),
+                  if (_loadingPhotos)
+                    const Positioned(
+                      bottom: 12,
+                      right: 12,
+                      child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                    ),
+                  if (galleryUrls.length > 1)
+                    Positioned(
+                      bottom: 10,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          galleryUrls.length,
+                          (i) => Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            width: i == _photoIndex ? 8 : 6,
+                            height: i == _photoIndex ? 8 : 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: i == _photoIndex ? Colors.white : Colors.white54,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           SliverToBoxAdapter(
@@ -119,6 +201,17 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                   const SizedBox(height: 20),
                   const Divider(),
                   const SizedBox(height: 12),
+                  if (widget.checkIn != null && widget.checkOut != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_today, size: 16, color: AppColors.navy),
+                        const SizedBox(width: 8),
+                        Text('${_fmtDate(widget.checkIn!)} — ${_fmtDate(widget.checkOut!)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        if (nights != null) Text('  ($nights คืน)', style: const TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -134,7 +227,12 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text('ราคารวมต่อการเข้าพัก (โดยประมาณ)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text(
+                    (nights != null && offer.priceAmount != null)
+                        ? 'ราคารวม $nights คืน · เฉลี่ยคืนละ ${(offer.priceAmount! / nights).toStringAsFixed(0)} ${offer.priceCurrency ?? ''}'
+                        : 'ราคารวมต่อการเข้าพัก (โดยประมาณ)',
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
                   const SizedBox(height: 20),
                   TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'ชื่อผู้เข้าพัก', border: OutlineInputBorder())),
                   const SizedBox(height: 12),
