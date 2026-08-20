@@ -224,6 +224,15 @@ class HotelOffer {
   final double? priceAmount;
   final String? priceCurrency;
   final String? roomDescription;
+  final String? photoUrl;
+  final String? largePhotoUrl;
+  final String? address;
+  final int? starClass;
+  final double? reviewScore;
+  final String? reviewScoreWord;
+  final int? reviewCount;
+  final String? distanceToCenter;
+  final String? bookingUrl;
 
   HotelOffer({
     required this.offerId,
@@ -231,6 +240,15 @@ class HotelOffer {
     this.priceAmount,
     this.priceCurrency,
     this.roomDescription,
+    this.photoUrl,
+    this.largePhotoUrl,
+    this.address,
+    this.starClass,
+    this.reviewScore,
+    this.reviewScoreWord,
+    this.reviewCount,
+    this.distanceToCenter,
+    this.bookingUrl,
   });
 
   factory HotelOffer.fromJson(Map<String, dynamic> j) => HotelOffer(
@@ -239,6 +257,15 @@ class HotelOffer {
         priceAmount: (j['price_amount'] as num?)?.toDouble(),
         priceCurrency: j['price_currency'],
         roomDescription: j['room_description'],
+        photoUrl: j['photo_url'],
+        largePhotoUrl: j['large_photo_url'],
+        address: j['address'],
+        starClass: (j['star_class'] as num?)?.toInt(),
+        reviewScore: (j['review_score'] as num?)?.toDouble(),
+        reviewScoreWord: j['review_score_word'],
+        reviewCount: (j['review_count'] as num?)?.toInt(),
+        distanceToCenter: j['distance_to_center'],
+        bookingUrl: j['booking_url'],
       );
 }
 

@@ -11,7 +11,7 @@ function apiKey() {
   return key;
 }
 
-async function bookingGet(path, params) {
+async function bookingGetOnce(path, params) {
   const url = new URL(BASE_URL + path);
   for (const [k, v] of Object.entries(params || {})) {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);
@@ -27,6 +27,17 @@ async function bookingGet(path, params) {
     throw new Error(`Booking.com API error ${res.status}: ${text.slice(0, 200)}`);
   }
   return res.json();
+}
+
+// The upstream Booking.com wrapper occasionally throws a transient
+// "authentication token invalid" error that clears up on immediate retry.
+async function bookingGet(path, params) {
+  try {
+    return await bookingGetOnce(path, params);
+  } catch (e) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return bookingGetOnce(path, params);
+  }
 }
 
 async function resolveDestId(cityName) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
+import 'hotel_detail_screen.dart';
 
 class BookingScreen extends StatefulWidget {
   final TravelLocation location;
@@ -81,53 +82,6 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
-  void _openRequestDialog(HotelOffer offer) {
-    final nameCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(offer.hotelName),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (offer.roomDescription != null) ...[
-              Text(offer.roomDescription!, style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 12),
-            ],
-            Text(
-              offer.priceAmount != null ? '${offer.priceAmount!.toStringAsFixed(2)} ${offer.priceCurrency ?? ''}' : 'ราคาไม่ระบุ',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.navy),
-            ),
-            const SizedBox(height: 16),
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'ชื่อผู้เข้าพัก')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ยกเลิก')),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await apiClient.post('/booking/request', {
-                  'offer_id': offer.offerId,
-                  'guest_name': nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
-                });
-                if (!mounted) return;
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('ส่งคำขอจอง "${offer.hotelName}" สำเร็จ')),
-                );
-              } on ApiException catch (e) {
-                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.message)));
-              }
-            },
-            child: const Text('ยืนยันคำขอจอง'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -197,8 +151,23 @@ class _BookingScreenState extends State<BookingScreen> {
                               final h = _hotels[i];
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 10),
+                                clipBehavior: Clip.antiAlias,
                                 child: ListTile(
-                                  leading: const CircleAvatar(backgroundColor: AppColors.navy, child: Icon(Icons.hotel, color: Colors.white)),
+                                  contentPadding: const EdgeInsets.all(8),
+                                  leading: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: SizedBox(
+                                      width: 56,
+                                      height: 56,
+                                      child: h.photoUrl != null
+                                          ? Image.network(
+                                              h.photoUrl!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (ctx, err, st) => Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white)),
+                                            )
+                                          : Container(color: AppColors.navy, child: const Icon(Icons.hotel, color: Colors.white)),
+                                    ),
+                                  ),
                                   title: Text(h.hotelName, style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Text(h.roomDescription ?? 'ห้องพักมาตรฐาน', maxLines: 2, overflow: TextOverflow.ellipsis),
                                   trailing: Column(
@@ -212,7 +181,7 @@ class _BookingScreenState extends State<BookingScreen> {
                                       Text(h.priceCurrency ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                     ],
                                   ),
-                                  onTap: () => _openRequestDialog(h),
+                                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HotelDetailScreen(offer: h))),
                                 ),
                               );
                             },

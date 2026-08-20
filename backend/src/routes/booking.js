@@ -84,6 +84,17 @@ router.get('/hotels', async (req, res) => {
         price_amount: priceAmount,
         price_currency: currency,
         room_description: roomDescription,
+        photo_url: h.main_photo_url || null,
+        large_photo_url: h.max_photo_url || h.main_photo_url || null,
+        address: [h.address, h.district, h.city_trans].filter(Boolean).join(', ') || null,
+        star_class: typeof h.class === 'number' ? h.class : null,
+        review_score: typeof h.review_score === 'number' ? h.review_score : null,
+        review_score_word: h.review_score_word || null,
+        review_count: typeof h.review_nr === 'number' ? h.review_nr : null,
+        distance_to_center: h.distance_to_cc_formatted || null,
+        booking_url: h.url || null,
+        latitude: typeof h.latitude === 'number' ? h.latitude : null,
+        longitude: typeof h.longitude === 'number' ? h.longitude : null,
       });
     }
 
@@ -106,12 +117,18 @@ router.post('/request', authMiddleware, (req, res) => {
 });
 
 router.get('/requests', authMiddleware, (req, res) => {
-  const rows = db.prepare(`SELECT br.*, ho.room_description, ho.price_amount, ho.price_currency, ho.check_in_date, ho.check_out_date, h.name AS hotel_name
+  const rows = db.prepare(`SELECT br.*, ho.room_description, ho.price_amount, ho.price_currency, ho.check_in_date, ho.check_out_date, ho.raw_json, h.name AS hotel_name
     FROM booking_requests br
     JOIN hotel_offers ho ON ho.offer_id = br.offer_id
     JOIN hotels h ON h.hotel_id = ho.hotel_id
     WHERE br.user_id = ? ORDER BY br.requested_at DESC`).all(req.user.user_id);
-  res.json({ requests: rows });
+  const enriched = rows.map((row) => {
+    const { raw_json, ...rest } = row;
+    let h = {};
+    try { h = raw_json ? JSON.parse(raw_json) : {}; } catch (e) { h = {}; }
+    return { ...rest, photo_url: h.main_photo_url || null, address: [h.address, h.district, h.city_trans].filter(Boolean).join(', ') || null };
+  });
+  res.json({ requests: enriched });
 });
 
 module.exports = router;

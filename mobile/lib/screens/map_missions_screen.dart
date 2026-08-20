@@ -144,6 +144,42 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
     );
   }
 
+  void _pickLocationForBooking() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text('ค้นหาที่พักใกล้สถานที่ไหน', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: _locations
+                    .map((loc) => ListTile(
+                          leading: CircleAvatar(backgroundColor: AppColors.navy, child: Icon(iconFor(loc.icon), color: Colors.white)),
+                          title: Text(loc.name),
+                          subtitle: Text(loc.province),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookingScreen(location: loc)));
+                          },
+                        ))
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -201,10 +237,10 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
                             child: ListView(
                               scrollDirection: Axis.horizontal,
                               padding: const EdgeInsets.symmetric(horizontal: 16),
-                              children: const [
-                                _ExternalServiceCard(label: 'Booking.com', icon: Icons.hotel),
-                                _ExternalServiceCard(label: 'Booking.com Flights', icon: Icons.flight),
-                                _ExternalServiceCard(label: 'HRVI Booking', icon: Icons.directions_car),
+                              children: [
+                                _ExternalServiceCard(label: 'Booking.com', icon: Icons.hotel, onTap: _pickLocationForBooking),
+                                const _ExternalServiceCard(label: 'Booking.com Flights', icon: Icons.flight),
+                                const _ExternalServiceCard(label: 'HRVI Booking', icon: Icons.directions_car),
                               ],
                             ),
                           ),
@@ -241,14 +277,16 @@ class _SectionHeader extends StatelessWidget {
 class _ExternalServiceCard extends StatelessWidget {
   final String label;
   final IconData icon;
-  const _ExternalServiceCard({required this.label, required this.icon});
+  final VoidCallback? onTap;
+  const _ExternalServiceCard({required this.label, required this.icon, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เปิดลิงก์จองภายนอก (mock): $label')),
-      ),
+      onTap: onTap ??
+          () => ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('เปิดลิงก์จองภายนอก (mock): $label')),
+              ),
       child: Container(
         width: 120,
         margin: const EdgeInsets.only(right: 10),
