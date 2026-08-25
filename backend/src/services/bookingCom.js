@@ -53,7 +53,7 @@ async function resolveDestId(cityName) {
   return city.dest_id;
 }
 
-async function searchHotels({ cityName, checkInDate, checkOutDate, adults }) {
+async function searchHotels({ cityName, checkInDate, checkOutDate, adults, children, childrenAges, rooms }) {
   const destId = await resolveDestId(cityName);
   const data = await bookingGet('/v1/hotels/search', {
     dest_id: destId,
@@ -61,10 +61,12 @@ async function searchHotels({ cityName, checkInDate, checkOutDate, adults }) {
     checkin_date: checkInDate,
     checkout_date: checkOutDate,
     adults_number: adults,
+    children_number: children > 0 ? children : undefined,
+    children_ages: children > 0 ? childrenAges : undefined,
     order_by: 'popularity',
     filter_by_currency: 'THB',
     locale: 'en-gb',
-    room_number: 1,
+    room_number: rooms || 1,
     units: 'metric',
     page_number: 0,
   });

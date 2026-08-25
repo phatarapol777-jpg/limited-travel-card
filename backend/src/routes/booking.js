@@ -27,7 +27,7 @@ function optionalUserId(req) {
 
 router.get('/hotels', async (req, res) => {
   try {
-    const { location_id, check_in, check_out, adults } = req.query;
+    const { location_id, check_in, check_out, adults, children, children_ages, rooms } = req.query;
     if (!location_id) return res.status(400).json({ error: 'location_id is required' });
 
     const location = db.prepare('SELECT * FROM locations WHERE location_id = ?').get(location_id);
@@ -37,8 +37,13 @@ router.get('/hotels', async (req, res) => {
     const checkInDate = check_in || defaultCheckIn();
     const checkOutDate = check_out || defaultCheckOut(checkInDate);
     const numAdults = parseInt(adults, 10) || 2;
+    const numChildren = parseInt(children, 10) || 0;
+    const numRooms = parseInt(rooms, 10) || 1;
 
-    const hotelsList = await bookingCom.searchHotels({ cityName: location.city_code, checkInDate, checkOutDate, adults: numAdults });
+    const hotelsList = await bookingCom.searchHotels({
+      cityName: location.city_code, checkInDate, checkOutDate,
+      adults: numAdults, children: numChildren, childrenAges: children_ages || '10', rooms: numRooms,
+    });
 
     const now = new Date().toISOString();
     const searchId = newId('srch');
@@ -96,6 +101,9 @@ router.get('/hotels', async (req, res) => {
         booking_url: h.url || null,
         latitude: typeof h.latitude === 'number' ? h.latitude : null,
         longitude: typeof h.longitude === 'number' ? h.longitude : null,
+        has_free_parking: h.has_free_parking === 1,
+        has_swimming_pool: h.has_swimming_pool === 1,
+        include_breakfast: h.hotel_include_breakfast === 1,
       });
     }
 

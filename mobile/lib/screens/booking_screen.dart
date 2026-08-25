@@ -12,14 +12,25 @@ class BookingScreen extends StatefulWidget {
   State<BookingScreen> createState() => _BookingScreenState();
 }
 
+enum _SortOption { popularity, priceLowHigh, priceHighLow, ratingHigh }
+
 class _BookingScreenState extends State<BookingScreen> {
   late DateTime _checkIn;
   late DateTime _checkOut;
   int _adults = 2;
+  int _children = 0;
+  int _rooms = 1;
   bool _loading = false;
   String? _error;
   String? _infoMessage;
   List<HotelOffer> _hotels = [];
+
+  _SortOption _sortOption = _SortOption.popularity;
+  RangeValues _priceRange = const RangeValues(0, 10000);
+  double _priceCeiling = 10000;
+  bool _filterFreeParking = false;
+  bool _filterPool = false;
+  bool _filterBreakfast = false;
 
   @override
   void initState() {
@@ -59,12 +70,20 @@ class _BookingScreenState extends State<BookingScreen> {
     });
     try {
       final data = await apiClient.get(
-        '/booking/hotels?location_id=${widget.location.locationId}&check_in=${_fmt(_checkIn)}&check_out=${_fmt(_checkOut)}&adults=$_adults',
+        '/booking/hotels?location_id=${widget.location.locationId}&check_in=${_fmt(_checkIn)}&check_out=${_fmt(_checkOut)}'
+        '&adults=$_adults&children=$_children&rooms=$_rooms',
       );
       final hotels = (data['hotels'] as List).map((e) => HotelOffer.fromJson(e)).toList();
+      final maxPrice = hotels.map((h) => h.priceAmount ?? 0).fold(0.0, (a, b) => a > b ? a : b);
       setState(() {
         _hotels = hotels;
         _loading = false;
+        _priceCeiling = maxPrice > 0 ? (maxPrice / 500).ceil() * 500 : 10000;
+        _priceRange = RangeValues(0, _priceCeiling);
+        _filterFreeParking = false;
+        _filterPool = false;
+        _filterBreakfast = false;
+        _sortOption = _SortOption.popularity;
         if (hotels.isEmpty) {
           _infoMessage = 'ไม่พบข้อเสนอโรงแรมสำหรับเงื่อนไขนี้ ลองเปลี่ยนวันที่ดู';
         }
@@ -82,8 +101,147 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
+  List<HotelOffer> get _displayedHotels {
+    var list = _hotels.where((h) {
+      final price = h.priceAmount ?? 0;
+      if (price < _priceRange.start || price > _priceRange.end) return false;
+      if (_filterFreeParking && !h.hasFreeParking) return false;
+      if (_filterPool && !h.hasSwimmingPool) return false;
+      if (_filterBreakfast && !h.includeBreakfast) return false;
+      return true;
+    }).toList();
+    switch (_sortOption) {
+      case _SortOption.priceLowHigh:
+        list.sort((a, b) => (a.priceAmount ?? 0).compareTo(b.priceAmount ?? 0));
+        break;
+      case _SortOption.priceHighLow:
+        list.sort((a, b) => (b.priceAmount ?? 0).compareTo(a.priceAmount ?? 0));
+        break;
+      case _SortOption.ratingHigh:
+        list.sort((a, b) => (b.reviewScore ?? 0).compareTo(a.reviewScore ?? 0));
+        break;
+      case _SortOption.popularity:
+        break;
+    }
+    return list;
+  }
+
+  Future<void> _openGuestPicker() async {
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('เลือกจำนวนผู้เข้าพัก', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 16),
+                _GuestStepper(
+                  label: 'ผู้ใหญ่',
+                  value: _adults,
+                  min: 1,
+                  max: 16,
+                  onChanged: (v) => setState(() => setSheetState(() => _adults = v)),
+                ),
+                const Divider(height: 24),
+                _GuestStepper(
+                  label: 'เด็ก',
+                  value: _children,
+                  min: 0,
+                  max: 8,
+                  onChanged: (v) => setState(() => setSheetState(() => _children = v)),
+                ),
+                const Divider(height: 24),
+                _GuestStepper(
+                  label: 'ห้องพัก',
+                  value: _rooms,
+                  min: 1,
+                  max: 8,
+                  onChanged: (v) => setState(() => setSheetState(() => _rooms = v)),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('เสร็จสิ้น')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFilterSheet() async {
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('ตัวกรอง', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                Text('งบประมาณ (ต่อคืน): ${_priceRange.start.toInt()} - ${_priceRange.end.toInt()} THB', style: const TextStyle(fontSize: 13)),
+                RangeSlider(
+                  values: _priceRange,
+                  min: 0,
+                  max: _priceCeiling,
+                  divisions: 20,
+                  labels: RangeLabels('${_priceRange.start.toInt()}', '${_priceRange.end.toInt()}'),
+                  onChanged: (v) => setState(() => setSheetState(() => _priceRange = v)),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('มีที่จอดรถฟรี'),
+                  value: _filterFreeParking,
+                  onChanged: (v) => setState(() => setSheetState(() => _filterFreeParking = v ?? false)),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('สระว่ายน้ำ'),
+                  value: _filterPool,
+                  onChanged: (v) => setState(() => setSheetState(() => _filterPool = v ?? false)),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('รวมอาหารเช้า'),
+                  value: _filterBreakfast,
+                  onChanged: (v) => setState(() => setSheetState(() => _filterBreakfast = v ?? false)),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('แสดงผลลัพธ์')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _sortLabel(_SortOption o) {
+    switch (o) {
+      case _SortOption.popularity:
+        return 'ยอดนิยม';
+      case _SortOption.priceLowHigh:
+        return 'ราคา: ต่ำ-สูง';
+      case _SortOption.priceHighLow:
+        return 'ราคา: สูง-ต่ำ';
+      case _SortOption.ratingHigh:
+        return 'คะแนนรีวิว';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final displayed = _displayedHotels;
     return Scaffold(
       appBar: AppBar(title: Text('ที่พักใกล้ ${widget.location.name}')),
       body: Column(
@@ -115,27 +273,70 @@ class _BookingScreenState extends State<BookingScreen> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Text('ผู้เข้าพัก:'),
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle_outline),
-                      onPressed: _adults > 1 ? () => setState(() => _adults--) : null,
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.people_outline, size: 16),
+                        label: Text(
+                          '$_adults ผู้ใหญ่${_children > 0 ? ' · $_children เด็ก' : ''} · $_rooms ห้อง',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onPressed: _openGuestPicker,
+                      ),
                     ),
-                    Text('$_adults'),
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline),
-                      onPressed: _adults < 8 ? () => setState(() => _adults++) : null,
-                    ),
-                    const Spacer(),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.search),
-                      label: const Text('ค้นหา'),
-                      onPressed: _loading ? null : _search,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.search),
+                        label: const Text('ค้นหา'),
+                        onPressed: _loading ? null : _search,
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+          const Divider(height: 1),
+          if (!_loading && _error == null && _hotels.isNotEmpty)
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.tune, size: 16),
+                      label: const Text('ตัวกรอง'),
+                      onPressed: _openFilterSheet,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: PopupMenuButton<_SortOption>(
+                      initialValue: _sortOption,
+                      onSelected: (v) => setState(() => _sortOption = v),
+                      itemBuilder: (ctx) => _SortOption.values
+                          .map((o) => PopupMenuItem(value: o, child: Text(_sortLabel(o))))
+                          .toList(),
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.sort, size: 16),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(_sortLabel(_sortOption), overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const Divider(height: 1),
           Expanded(
             child: _loading
@@ -144,22 +345,51 @@ class _BookingScreenState extends State<BookingScreen> {
                     ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red))))
                     : _hotels.isEmpty
                         ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_infoMessage ?? 'ไม่พบข้อเสนอ', textAlign: TextAlign.center)))
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _hotels.length,
-                            itemBuilder: (ctx, i) {
-                              final h = _hotels[i];
-                              return _HotelResultCard(
-                                offer: h,
-                                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                                      builder: (_) => HotelDetailScreen(offer: h, checkIn: _checkIn, checkOut: _checkOut),
-                                    )),
-                              );
-                            },
-                          ),
+                        : displayed.isEmpty
+                            ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('ไม่มีที่พักตรงกับตัวกรอง ลองปรับตัวกรองดู', textAlign: TextAlign.center)))
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: displayed.length,
+                                itemBuilder: (ctx, i) {
+                                  final h = displayed[i];
+                                  return _HotelResultCard(
+                                    offer: h,
+                                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                          builder: (_) => HotelDetailScreen(offer: h, checkIn: _checkIn, checkOut: _checkOut),
+                                        )),
+                                  );
+                                },
+                              ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _GuestStepper extends StatelessWidget {
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+  const _GuestStepper({required this.label, required this.value, required this.min, required this.max, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 15))),
+        IconButton(
+          icon: const Icon(Icons.remove_circle_outline),
+          onPressed: value > min ? () => onChanged(value - 1) : null,
+        ),
+        SizedBox(width: 28, child: Text('$value', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline),
+          onPressed: value < max ? () => onChanged(value + 1) : null,
+        ),
+      ],
     );
   }
 }

@@ -234,6 +234,9 @@ class HotelOffer {
   final int? reviewCount;
   final String? distanceToCenter;
   final String? bookingUrl;
+  final bool hasFreeParking;
+  final bool hasSwimmingPool;
+  final bool includeBreakfast;
 
   HotelOffer({
     required this.offerId,
@@ -251,6 +254,9 @@ class HotelOffer {
     this.reviewCount,
     this.distanceToCenter,
     this.bookingUrl,
+    this.hasFreeParking = false,
+    this.hasSwimmingPool = false,
+    this.includeBreakfast = false,
   });
 
   factory HotelOffer.fromJson(Map<String, dynamic> j) => HotelOffer(
@@ -269,6 +275,9 @@ class HotelOffer {
         reviewCount: (j['review_count'] as num?)?.toInt(),
         distanceToCenter: j['distance_to_center'],
         bookingUrl: j['booking_url'],
+        hasFreeParking: j['has_free_parking'] == true,
+        hasSwimmingPool: j['has_swimming_pool'] == true,
+        includeBreakfast: j['include_breakfast'] == true,
       );
 }
 
