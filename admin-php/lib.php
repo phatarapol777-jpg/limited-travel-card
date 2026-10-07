@@ -59,7 +59,13 @@ function api(string $method, string $path, ?array $body = null, ?string $token =
         CURLOPT_SSL_VERIFYHOST => ($cfg['verify_ssl'] ?? true) ? 2 : 0,
     ]);
     if ($body !== null) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+        try {
+            $json = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            curl_close($ch);
+            throw new RuntimeException('ข้อมูลที่ส่งมีตัวอักษรไม่ถูกต้อง (ต้องเป็น UTF-8)');
+        }
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
     }
     $raw = curl_exec($ch);
     if ($raw === false) {
@@ -103,7 +109,8 @@ function csrf_token(): string {
 
 function check_csrf(): void {
     $sent = $_POST['csrf'] ?? '';
-    if (!is_string($sent) || !hash_equals($_SESSION['csrf'] ?? '', $sent)) {
+    $expected = $_SESSION['csrf'] ?? '';
+    if ($expected === '' || !is_string($sent) || !hash_equals($expected, $sent)) {
         http_response_code(400);
         exit('Invalid CSRF token');
     }
