@@ -1,23 +1,11 @@
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const db = require('../db');
+const { SECRET } = require('../secret');
 
 // ---- kiosk identity -------------------------------------------------------
-// Each kiosk has a code (KSK-001) and a key derived from a server secret, so keys survive database resets
-// as long as KIOSK_SECRET is set in the environment. Without it a random secret is kept next to the database.
-function loadSecret() {
-  if (process.env.KIOSK_SECRET) return process.env.KIOSK_SECRET;
-  const file = path.join(process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data'), 'kiosk_secret');
-  try {
-    return fs.readFileSync(file, 'utf8').trim();
-  } catch {
-    const secret = crypto.randomBytes(24).toString('hex');
-    fs.writeFileSync(file, secret);
-    return secret;
-  }
-}
-const KIOSK_SECRET = loadSecret();
+// Each kiosk has a code (KSK-001) and a key derived from the server secret (see ../secret.js), so keys survive
+// database resets as long as KIOSK_SECRET is set in the environment.
+const KIOSK_SECRET = SECRET;
 
 function kioskKey(code) {
   return crypto.createHmac('sha256', KIOSK_SECRET).update(`kiosk|${code}`).digest('hex').slice(0, 20);
