@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/image_tools.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
 
@@ -142,6 +143,10 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
   late final _missionDescription = TextEditingController(text: widget.existing?['mission']?['description'] ?? '');
   late final _cardName = TextEditingController(text: widget.existing?['card']?['name'] ?? '');
   late final _cardColorHex = TextEditingController(text: widget.existing?['card']?['color_hex'] ?? '#4C6B8A');
+  late final _cardLore = TextEditingController(text: widget.existing?['card']?['lore'] ?? '');
+  late final _mintLimit = TextEditingController(text: widget.existing?['card']?['mint_limit']?.toString() ?? '');
+  String? _newArtwork; // a picture picked in this form (data URL); null = keep the current one
+  bool _removeArtwork = false;
 
   late String _icon = widget.existing?['icon'] ?? _kIcons.first;
   late String _cardIcon = widget.existing?['card']?['icon'] ?? _kIcons.first;
@@ -150,6 +155,24 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
   String? _error;
 
   bool get _isEdit => widget.existing != null;
+
+  bool get _hasCurrentArtwork => widget.existing?['card']?['has_image'] == true && !_removeArtwork;
+
+  String? get _currentArtworkUrl {
+    final id = widget.existing?['card']?['template_id'];
+    return (id != null && _hasCurrentArtwork) ? '${apiBaseUrlOf()}/media/card/$id' : null;
+  }
+
+  // The picker has to start straight from the tap, so there is no await before it.
+  Future<void> _pickArtwork() async {
+    final url = await pickJpeg(maxSide: 1100, maxChars: 750000);
+    if (url != null && mounted) {
+      setState(() {
+        _newArtwork = url;
+        _removeArtwork = false;
+      });
+    }
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -170,6 +193,10 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
       'card_icon': _cardIcon,
       'card_color_hex': _cardColorHex.text.trim(),
       'card_rarity': _rarity,
+      'card_lore': _cardLore.text.trim(),
+      'card_mint_limit': _mintLimit.text.trim(),
+      if (_newArtwork != null) 'card_image': _newArtwork,
+      if (_removeArtwork && _newArtwork == null) 'remove_card_image': true,
     };
     try {
       if (_isEdit) {
@@ -273,6 +300,63 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
                   items: _kRarities.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
                   onChanged: (v) => setState(() => _rarity = v ?? 'normal'),
                 ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _mintLimit,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'จำนวนที่แจกสูงสุด (เว้นว่าง = ไม่จำกัด)'),
+                  validator: (v) {
+                    final t = (v ?? '').trim();
+                    if (t.isEmpty) return null;
+                    final n = int.tryParse(t);
+                    return (n == null || n < 1 || n > 100000) ? 'ใส่จำนวนเต็ม 1 - 100,000' : null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _cardLore,
+                  maxLines: 3,
+                  maxLength: 500,
+                  decoration: const InputDecoration(labelText: 'เรื่องราวของการ์ด / ประวัติสถานที่'),
+                ),
+                const SizedBox(height: 6),
+                const Text('ภาพ Artwork การ์ด (แนวตั้ง)', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: 170,
+                    child: InkWell(
+                      onTap: _pickArtwork,
+                      borderRadius: BorderRadius.circular(14),
+                      child: AspectRatio(
+                        aspectRatio: 5 / 7,
+                        child: Container(
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFDDE2EA))),
+                          clipBehavior: Clip.antiAlias,
+                          child: _newArtwork != null
+                              ? Image.memory(decodeDataUrl(_newArtwork!), fit: BoxFit.cover)
+                              : (_currentArtworkUrl != null
+                                  ? Image.network(_currentArtworkUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image))
+                                  : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                      Icon(Icons.add_photo_alternate_outlined, size: 40, color: AppColors.navy),
+                                      SizedBox(height: 6),
+                                      Text('แตะเพื่อเลือกภาพ', style: TextStyle(color: Colors.grey)),
+                                    ])),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (_newArtwork != null || _hasCurrentArtwork)
+                  TextButton.icon(
+                    onPressed: () => setState(() {
+                      _newArtwork = null;
+                      _removeArtwork = true;
+                    }),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('ลบภาพ'),
+                  ),
 
                 if (_error != null) ...[
                   const SizedBox(height: 16),

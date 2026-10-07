@@ -10,12 +10,53 @@ router.get('/locations', (req, res) => {
   const locations = db.prepare('SELECT * FROM locations ORDER BY name').all();
   const result = locations.map((loc) => {
     const mission = db.prepare('SELECT * FROM missions WHERE location_id = ?').get(loc.location_id);
-    const card = mission ? db.prepare('SELECT * FROM card_templates WHERE mission_id = ?').get(mission.mission_id) : null;
+    const row = mission ? db.prepare('SELECT * FROM card_templates WHERE mission_id = ?').get(mission.mission_id) : null;
+    let card = null;
+    if (row) {
+      const { image, ...rest } = row; // the artwork is served by /api/media, never inside this list
+      card = { ...rest, has_image: !!image };
+    }
     const kiosk = db.prepare('SELECT * FROM checkin_kiosks WHERE location_id = ?').get(loc.location_id);
     return { ...loc, mission, card, kiosk };
   });
   res.json({ locations: result });
 });
+
+const { imageError, MAX_CARD_IMAGE_CHARS } = require('../services/questService');
+
+/** Optional extras for a location's card: artwork, story and mint limit. Returns {error} or {extras}. */
+function cardExtras(body, mintedCount = 0) {
+  const b = body || {};
+  const extras = {};
+  if (typeof b.card_image === 'string' && b.card_image !== '') {
+    const err = imageError(b.card_image, MAX_CARD_IMAGE_CHARS, 'ภาพการ์ด');
+    if (err) return { error: err };
+    extras.image = b.card_image;
+  }
+  if (b.remove_card_image === true) extras.image = null;
+  if (b.card_lore !== undefined && b.card_lore !== null) {
+    const lore = String(b.card_lore).trim();
+    if (lore.length > 500) return { error: 'เรื่องราวการ์ดยาวเกิน 500 ตัวอักษร' };
+    extras.lore = lore || null;
+  }
+  if (b.card_mint_limit !== undefined) {
+    if (b.card_mint_limit === null || b.card_mint_limit === '') {
+      extras.mint_limit = null;
+    } else {
+      const n = Number(b.card_mint_limit);
+      if (!Number.isInteger(n) || n < 1 || n > 100000) return { error: 'จำนวนที่แจกสูงสุดต้องเป็นจำนวนเต็ม 1 ถึง 100,000 (เว้นว่าง = ไม่จำกัด)' };
+      if (n < mintedCount) return { error: `ตั้งต่ำกว่าจำนวนที่แจกไปแล้ว (${mintedCount} ใบ) ไม่ได้` };
+      extras.mint_limit = n;
+    }
+  }
+  return { extras };
+}
+
+function applyCardExtras(templateId, extras) {
+  const columns = ['image', 'lore', 'mint_limit'].filter((c) => extras[c] !== undefined);
+  if (!columns.length) return;
+  db.prepare(`UPDATE card_templates SET ${columns.map((c) => `${c} = ?`).join(', ')} WHERE template_id = ?`).run(...columns.map((c) => extras[c]), templateId);
+}
 
 function validateLocationPayload(body) {
   const { name, province, latitude, longitude, mission_title, card_name } = body || {};
@@ -28,6 +69,8 @@ function validateLocationPayload(body) {
 router.post('/locations', (req, res) => {
   const err = validateLocationPayload(req.body);
   if (err) return res.status(400).json({ error: err });
+  const parsed = cardExtras(req.body);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
 
   const {
     name, description, latitude, longitude, province, icon,
@@ -56,6 +99,7 @@ router.post('/locations', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, 'mission', ?, 'QUEST_LOCATION')`)
     .run(templateId, locationId, missionId, card_name, card_icon || 'style', card_color_hex || '#4C6B8A', normalizeRarity(card_rarity));
 
+  applyCardExtras(templateId, parsed.extras);
   res.status(201).json({ location_id: locationId, mission_id: missionId, template_id: templateId, kiosk_id: kioskId });
 });
 
@@ -70,6 +114,10 @@ router.put('/locations/:id', (req, res) => {
 
   const err = validateLocationPayload(req.body);
   if (err) return res.status(400).json({ error: err });
+  const existingMission = db.prepare('SELECT mission_id FROM missions WHERE location_id = ?').get(req.params.id);
+  const existingCard = existingMission ? db.prepare('SELECT template_id, minted_count FROM card_templates WHERE mission_id = ?').get(existingMission.mission_id) : null;
+  const parsed = cardExtras(req.body, existingCard ? existingCard.minted_count : 0);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
 
   const {
     name, description, latitude, longitude, province, icon,
@@ -90,6 +138,7 @@ router.put('/locations/:id', (req, res) => {
     if (card) {
       db.prepare('UPDATE card_templates SET name = ?, icon = ?, color_hex = ?, rarity = ? WHERE template_id = ?')
         .run(card_name, card_icon || 'style', card_color_hex || '#4C6B8A', normalizeRarity(card_rarity), card.template_id);
+      applyCardExtras(card.template_id, parsed.extras);
     }
   }
 
