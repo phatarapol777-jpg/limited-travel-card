@@ -33,7 +33,10 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   String? _kioskListError;
   int _listAttempts = 0;
   Timer? _retryList;
-  bool _separateQrCamera = false;
+  List<CameraDevice> _cameraDevices = [];
+  String? _faceDeviceId; // null = the browser's default camera
+  String? _qrDeviceId; // null = read the QR with the face camera (one camera for both)
+  bool _detectingCameras = false;
   bool _starting = false;
   String? _setupError;
 
@@ -138,8 +141,14 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _geo = await currentPosition();
     // Ask for camera permission now (and release the camera), so it is not first requested when a traveler is waiting.
     try {
-      final test = await openLiveCamera(front: true);
+      final test = await openLiveCamera(front: true, deviceId: _faceDeviceId);
       await test.close();
+      if (_faceDeviceId == null) {
+        // no camera picked: use a real one rather than whatever the system default is (often a virtual webcam)
+        final list = await listCameras();
+        final real = list.where((c) => !_virtualCamera.hasMatch(c.label)).toList();
+        if (list.isNotEmpty) _faceDeviceId = (real.isNotEmpty ? real.first : list.first).deviceId;
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -346,16 +355,40 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 
   Future<void> _openCameras() async {
     // One getUserMedia per camera, so the browser asks for permission only once.
-    final face = await openLiveCamera(front: true);
+    final face = await openLiveCamera(front: true, deviceId: _faceDeviceId);
     _faceCamera = face;
     LiveCamera? qr;
-    if (_separateQrCamera) {
-      final others = (await listCameras()).where((c) => c.deviceId != face.deviceId).toList();
-      if (others.isNotEmpty) qr = await openLiveCamera(deviceId: others.first.deviceId);
-    }
+    if (_qrDeviceId != null && _qrDeviceId != _faceDeviceId) qr = await openLiveCamera(deviceId: _qrDeviceId);
     _qrCamera = qr;
     _qrLabel = (qr ?? face).label;
     if (mounted) setState(() {});
+  }
+
+  static final _virtualCamera = RegExp('iriun|obs|virtual|droidcam|epoccam|camo|ndi|manycam|snap', caseSensitive: false);
+
+  /// Asks for camera permission once, then lists the cameras so the operator can pick which one scans faces / QR codes.
+  Future<void> _detectCameras() async {
+    setState(() {
+      _detectingCameras = true;
+      _setupError = null;
+    });
+    try {
+      final test = await openLiveCamera(front: true);
+      await test.close();
+      final list = await listCameras();
+      if (!mounted) return;
+      setState(() {
+        _cameraDevices = list;
+        // prefer a real camera over virtual ones (phone-as-webcam apps show a placeholder when they are not running)
+        final real = list.where((c) => !_virtualCamera.hasMatch(c.label)).toList();
+        _faceDeviceId = (real.isNotEmpty ? real.first : list.first).deviceId;
+        _qrDeviceId = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _setupError = 'เปิดกล้องของเครื่องนี้ไม่ได้ ($e) กรุณาอนุญาตการใช้กล้องในเบราว์เซอร์');
+    } finally {
+      if (mounted) setState(() => _detectingCameras = false);
+    }
   }
 
   Future<void> _closeCameras() async {
@@ -393,6 +426,18 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 
   Widget _text(String s, {double size = 14, bool bold = false, Color color = Colors.white, TextAlign align = TextAlign.center}) =>
       Text(s, textAlign: align, style: TextStyle(color: color, fontSize: size, fontWeight: bold ? FontWeight.bold : FontWeight.normal));
+
+  Widget _cameraPicker({required String? value, required List<DropdownMenuItem<String?>> items, required ValueChanged<String?> onChanged}) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: DropdownButtonHideUnderline(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DropdownButton<String?>(isExpanded: true, value: value, items: items, onChanged: onChanged),
+        ),
+      ),
+    );
+  }
 
   Widget _buildStage() {
     switch (_stage) {
@@ -450,14 +495,36 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
                       focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.gold)),
                     ),
                   ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: _separateQrCamera,
-                    activeThumbColor: AppColors.gold,
-                    onChanged: (v) => setState(() => _separateQrCamera = v),
-                    title: _text('ใช้กล้องตัวที่ 2 อ่าน QR (กล้องล่าง)', align: TextAlign.left),
-                    subtitle: _text('ปิด = ใช้กล้องเดียวอ่านทั้ง QR และใบหน้า (แนะนำสำหรับโน้ตบุ๊ก)', size: 12, color: Colors.white54, align: TextAlign.left),
+                  const SizedBox(height: 4),
+                  OutlinedButton.icon(
+                    onPressed: _detectingCameras ? null : _detectCameras,
+                    icon: _detectingCameras
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.videocam),
+                    label: Text(_cameraDevices.isEmpty ? 'ตรวจหากล้อง / เลือกกล้อง' : 'ตรวจหากล้องอีกครั้ง'),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white38)),
                   ),
+                  if (_cameraDevices.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _text('กล้องสแกนใบหน้า', size: 12, color: Colors.white70, align: TextAlign.left),
+                    const SizedBox(height: 4),
+                    _cameraPicker(
+                      value: _faceDeviceId,
+                      items: [for (final c in _cameraDevices) DropdownMenuItem(value: c.deviceId, child: Text(c.label.isEmpty ? 'กล้อง ${_cameraDevices.indexOf(c) + 1}' : c.label, overflow: TextOverflow.ellipsis))],
+                      onChanged: (v) => setState(() => _faceDeviceId = v),
+                    ),
+                    const SizedBox(height: 10),
+                    _text('กล้องอ่าน QR จากมือถือ', size: 12, color: Colors.white70, align: TextAlign.left),
+                    const SizedBox(height: 4),
+                    _cameraPicker(
+                      value: _qrDeviceId,
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('ใช้กล้องเดียวกับใบหน้า (แนะนำ)')),
+                        for (final c in _cameraDevices) DropdownMenuItem(value: c.deviceId, child: Text(c.label.isEmpty ? 'กล้อง ${_cameraDevices.indexOf(c) + 1}' : c.label, overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: (v) => setState(() => _qrDeviceId = v),
+                    ),
+                  ],
                   if (_setupError != null) ...[
                     const SizedBox(height: 8),
                     _text(_setupError!, color: Colors.redAccent),
