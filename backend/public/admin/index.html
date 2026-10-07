@@ -320,14 +320,40 @@ async function renderCards(panel) {
 
 // ---- community moderation ---------------------------------------------------------------------------------------------------
 async function renderCommunity(panel) {
-  const { posts } = await api('/admin/community/posts');
-  panel.replaceChildren(
-    el('p', { class: 'muted' }, 'โพสต์ที่ซ่อนจะไม่แสดงในแอป และกดไลก์/คอมเมนต์ไม่ได้ (ซ่อนแล้วคืนสถานะได้)'),
-    table(['เวลา', 'ผู้โพสต์', 'เนื้อหา', 'ไลก์ / คอมเมนต์', 'สถานะ', ''], posts.map((p) => [
-      fmtDate(p.timestamp), p.username, p.content.length > 140 ? p.content.slice(0, 140) + '…' : p.content, `${p.likes} / ${p.comments}`, p.status === 'visible' ? 'แสดง' : 'ซ่อน',
+  const reportedOnly = !!state.communityReported;
+  const { posts } = await api('/admin/community/posts' + (reportedOnly ? '?reported=1' : ''));
+  const toggle = el('div', { class: 'row', style: 'gap:6px;margin-bottom:10px' }, [[false, 'โพสต์ล่าสุด'], [true, 'ถูกรายงาน']].map(([v, label]) =>
+    el('button', { class: v === reportedOnly ? '' : 'small', onclick: () => { state.communityReported = v; renderPanel(); } }, label)));
+  const rows = posts.map((p) => {
+    const detail = el('div', { class: 'muted', style: 'font-size:12px' });
+    const showMore = async () => {
+      try {
+        const parts = [];
+        if (p.reports > 0) {
+          const { reports } = await api('/admin/community/posts/' + p.post_id + '/reports');
+          parts.push(el('div', {}, [el('b', {}, 'เหตุผลที่ถูกรายงาน: '), reports.map((r) => `${r.reason} (โดย @${r.reporter})`).join(' · ')]));
+        }
+        if (p.images > 0) {
+          const { images } = await api('/admin/community/posts/' + p.post_id + '/images');
+          parts.push(el('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap;margin-top:4px' }, images.filter(isJpegDataUrl).map((u) => el('img', { src: u, alt: '', style: 'height:80px;border-radius:6px;border:1px solid var(--line)' }))));
+        }
+        detail.replaceChildren(...(parts.length ? parts : [document.createTextNode('ไม่มีรายละเอียดเพิ่มเติม')]));
+      } catch (e) { detail.textContent = e.message; }
+    };
+    const text = p.content.length > 140 ? p.content.slice(0, 140) + '…' : p.content;
+    return [
+      fmtDate(p.timestamp), p.username,
+      el('div', {}, el('div', {}, text || '(รูปภาพ)'), p.location_name ? el('div', { class: 'muted', style: 'font-size:12px' }, '📍 ' + p.location_name) : '',
+        (p.reports > 0 || p.images > 0) ? el('button', { class: 'small', onclick: showMore }, 'ดูรูป/เหตุผลรายงาน') : '', detail),
+      `${p.likes} / ${p.comments} / ${p.images}`, p.reports > 0 ? el('b', { class: 'err' }, String(p.reports)) : '0', p.status === 'visible' ? 'แสดง' : 'ซ่อน',
       el('button', { class: 'small' + (p.status === 'visible' ? ' danger' : ''), onclick: async () => {
         try { await api('/admin/community/posts/' + p.post_id, { method: 'PUT', body: JSON.stringify({ status: p.status === 'visible' ? 'hidden' : 'visible' }) }); renderPanel(); } catch (e) { alert(e.message); }
-      } }, p.status === 'visible' ? 'ซ่อน' : 'แสดงอีกครั้ง')])));
+      } }, p.status === 'visible' ? 'ซ่อน' : 'แสดงอีกครั้ง')];
+  });
+  panel.replaceChildren(
+    el('p', { class: 'muted' }, 'โพสต์ที่ซ่อนจะไม่แสดงในแอป รูปของโพสต์จะเปิดดูไม่ได้ และไม่นับเข้าอันดับนักเที่ยวประจำเดือน (ซ่อนแล้วคืนสถานะได้)'),
+    toggle,
+    table(['เวลา', 'ผู้โพสต์', 'เนื้อหา', 'รีแอคชัน / คอมเมนต์ / รูป', 'ถูกรายงาน', 'สถานะ', ''], rows));
 }
 
 // ---- system settings, password, backup ----------------------------------------------------------------------------

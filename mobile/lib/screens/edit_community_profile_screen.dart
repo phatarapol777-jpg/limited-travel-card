@@ -117,8 +117,9 @@ class _EditCommunityProfileScreenState extends State<EditCommunityProfileScreen>
                     borderRadius: BorderRadius.circular(14),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 6,
+                      child: SizedBox(
+                        height: 150,
+                        width: double.infinity,
                         child: _cover != null
                             ? Image.memory(decodeDataUrl(_cover!), fit: BoxFit.cover)
                             : (p.hasCover && !_removeCover)

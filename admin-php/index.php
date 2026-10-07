@@ -30,10 +30,11 @@ page_header('ภาพรวม', 'index.php');
   <h3 style="margin-top:0">โมดูลใหม่ (ดูอย่างเดียว)</h3>
   <?php if ($modules === null): ?>
     <p class="muted">ยังโหลดข้อมูลโมดูลใหม่ไม่ได้<?= $modulesError ? ': ' . h($modulesError) : '' ?></p>
-  <?php else: $q = $modules['quests'] ?? []; $s = $modules['merchants'] ?? []; $b = $modules['blind_packs'] ?? []; ?>
+  <?php else: $q = $modules['quests'] ?? []; $s = $modules['merchants'] ?? []; $b = $modules['blind_packs'] ?? []; $c = $modules['community'] ?? []; ?>
     <table><thead><tr><th>โมดูล</th><th>รออนุมัติ</th><th>เปิดใช้งาน</th><th>ไม่อนุมัติ</th><th>อื่น ๆ</th></tr></thead><tbody>
       <tr><td>ภารกิจจากผู้ใช้</td><td><?= $m($q, 'pending') ?></td><td><?= $m($q, 'approved') ?></td><td><?= $m($q, 'rejected') ?></td><td>ปิดแล้ว <?= $m($q, 'closed') ?></td></tr>
       <tr><td>ร้านค้าพันธมิตร</td><td><?= $m($s, 'pending') ?> (รอตรวจการแก้ไข <?= $m($s, 'revisions_waiting') ?>)</td><td><?= $m($s, 'approved') ?></td><td><?= $m($s, 'rejected') ?></td><td>ระงับ <?= $m($s, 'suspended') ?> · มีสิทธิประโยชน์ <?= $m($s, 'with_privileges') ?></td></tr>
+      <tr><td>คอมมูนิตี้</td><td>ถูกรายงาน <?= $m($c, 'reported_posts') ?> โพสต์</td><td>โพสต์ <?= $m($c, 'posts') ?> · คอมเมนต์ <?= $m($c, 'comments') ?></td><td>-</td><td>ซ่อน <?= $m($c, 'hidden_posts') ?> · รีแอคชัน <?= $m($c, 'reactions') ?> · การติดตาม <?= $m($c, 'follows') ?> · ตราที่มอบ <?= $m($c, 'badges_awarded') ?></td></tr>
       <tr><td>การ์ดสุ่ม (ของจริง)</td><td>-</td><td>แบบการ์ด <?= $m($b, 'designs') ?></td><td>-</td><td>ผู้สนใจสั่งซื้อ <?= $m($b, 'order_interest') ?></td></tr>
     </tbody></table>
     <p class="muted">การ์ดที่ถูกยกเลิกโดยผู้ดูแล: <?= $m($modules, 'cards_voided') ?> ใบ · การอนุมัติและจัดการอยู่ที่ Admin Dashboard (/admin/) ของระบบหลัก</p>

@@ -101,13 +101,15 @@ class _CommunityProfileScreenState extends State<CommunityProfileScreen> {
     final cover = p.cover;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Stack(clipBehavior: Clip.none, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: AspectRatio(
-            aspectRatio: 16 / 6,
-            child: cover != null
-                ? Image.network(cover, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: AppColors.navy))
-                : const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.navy, AppColors.rareBlue]))),
+        LayoutBuilder(
+          builder: (context, box) => ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              height: (box.maxWidth * 6 / 16).clamp(100.0, 190.0),
+              child: cover != null
+                  ? Image.network(cover, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: AppColors.navy))
+                  : const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.navy, AppColors.rareBlue]))),
+            ),
           ),
         ),
         Positioned(left: 16, bottom: -36, child: Container(padding: const EdgeInsets.all(3), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: AuthorAvatar(author: p.author, radius: 38))),

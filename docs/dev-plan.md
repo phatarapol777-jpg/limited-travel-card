@@ -46,3 +46,15 @@ Phases 0-3 are implemented and committed locally; nothing after commit `592b671`
 - Phase 1 (module gaps): quest edit/close and GPS check on claim, kiosk disable and key rotation, QR print sheet, card void, order-ready notice, community moderation.
 - Phase 2 (partner shops): backend (`/api/merchants`, admin review, media), Flutter (shop form with map pin and hours editor, my shops, map pins and filters, shop drawer, show-to-staff, partner perks on the card page), Node admin "ร้านค้า" tab.
 - Phase 3: `/api/admin/stats` carries `modules`, shown read-only on the PHP overview page. Re-upload `admin-php/index.php` and `admin-php/logout.php` after deploying the API.
+
+## Community subsystem (2026-10-08)
+
+Implemented from the community spec, on top of the old posts/likes/comments:
+
+- Posts with up to 10 pictures, edit/delete, place tag (opens the attraction page), hashtags, share link (`/?post=<id>`), report.
+- Reactions (LIKE, LOVE, WOW, SAD, ANGRY; old likes were migrated to LIKE), comments with a picture, edit and delete of your own.
+- Public profile (display name, avatar, cover, bio, stats, followers/following, timeline), follow, search (users, #tags, text), feed tabs (all, following, trending).
+- Monthly leaderboard of different places tagged, closed lazily after each Thailand-time month (idempotent), badges for the top N, a switch to show or hide the badge after the display name.
+- Notifications for comments, reactions, follows and badges; admin tab with reports; `modules.community` in `/admin/stats`.
+- Pictures are stored in the database with hard caps (post 45k chars, comment 35k, avatar 25k, cover 90k) and are refused once the database passes 70 MB (`COMMUNITY_DB_LIMIT_MB`), because the whole database is the backup snapshot. Switching to object storage later only changes the media URLs.
+- Settings: `community_tag_verify` (count only tags backed by a check-in or place card; off by default) and `community_badge_top_n` (default 3).
