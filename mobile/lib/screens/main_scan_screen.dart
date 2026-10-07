@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/geo_service.dart';
 import '../theme.dart';
 import 'profile_view_screen.dart';
 import 'scan_kiosk_screen.dart';
@@ -63,7 +64,11 @@ class _MainScanScreenState extends State<MainScanScreen> {
       final code = value.substring('TRVKIOSK|'.length);
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanKioskScreen(kioskCode: code)));
     } else if (value.startsWith('TRVQUEST|')) {
-      await _claim('/quests/claim', value, title: 'รับการ์ดภารกิจ');
+      // the printed QR works from anywhere, so the server also checks that this phone is near the place
+      setState(() => _hint = 'กำลังหาตำแหน่งของคุณ...');
+      final here = await currentPosition();
+      if (mounted) setState(() => _hint = null);
+      await _claim('/quests/claim', value, title: 'รับการ์ดภารกิจ', extra: here == null ? {} : {'lat': here.lat, 'lng': here.lng});
     } else if (value.startsWith('TRVCARD|')) {
       await _claim('/cards/activate', value, title: 'เปิดใช้งานการ์ด');
     } else {
@@ -73,11 +78,11 @@ class _MainScanScreenState extends State<MainScanScreen> {
 
   void _unknown() => setState(() => _hint = 'ไม่รู้จัก QR นี้ ลองสแกน QR ของตู้เช็คอิน ภารกิจ การ์ด หรือโปรไฟล์เพื่อน');
 
-  Future<void> _claim(String path, String payload, {required String title}) async {
+  Future<void> _claim(String path, String payload, {required String title, Map<String, dynamic> extra = const {}}) async {
     String? error;
     TravelCard? card;
     try {
-      final data = await apiClient.post(path, {'payload': payload});
+      final data = await apiClient.post(path, {'payload': payload, ...extra});
       card = TravelCard.fromJson(data['card']);
     } on ApiException catch (e) {
       error = e.message;

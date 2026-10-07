@@ -138,7 +138,7 @@ document.getElementById('logoutBtn').addEventListener('click', logout);
 
 const TABS = [
   ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'], ['audit', 'บันทึกการตรวจ'], ['kiosks', 'ตู้เช็คอิน'],
-  ['settings', 'ตั้งค่าระบบ'], ['quests', 'ภารกิจ'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
+  ['settings', 'ตั้งค่าระบบ'], ['quests', 'ภารกิจ'], ['cards', 'การ์ด'], ['community', 'ชุมชน'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
 ];
 
 function renderTabs() {
@@ -213,8 +213,21 @@ async function renderPanel() {
       const { kiosks } = await api('/admin/kiosks');
       panel.replaceChildren(
         el('p', { class: 'muted' }, 'ใช้รหัสตู้และคีย์นี้ตั้งค่าที่เครื่อง Kiosk (ห้ามเผยแพร่คีย์) QR หน้าตู้คือ TRVKIOSK|รหัสตู้'),
-        table(['รหัสตู้', 'สถานที่', 'คีย์ตู้', 'ออนไลน์ล่าสุด'],
-          kiosks.map((k) => [k.kiosk_code, `${k.location_name} (${k.province})`, k.kiosk_key, k.last_seen_at ? fmtDate(k.last_seen_at) : 'ยังไม่เคย'])));
+        table(['รหัสตู้', 'สถานที่', 'คีย์ตู้', 'ออนไลน์ล่าสุด', 'สถานะ', ''],
+          kiosks.map((k) => [k.kiosk_code, `${k.location_name} (${k.province})`, k.kiosk_key, k.last_seen_at ? fmtDate(k.last_seen_at) : 'ยังไม่เคย', k.disabled ? 'ปิดใช้งาน' : 'ใช้งาน',
+            el('div', { class: 'row-actions' },
+              el('button', { class: 'small', onclick: async () => {
+                if (!confirm(`ออกคีย์ใหม่ให้ ${k.kiosk_code}? คีย์เดิมจะใช้ไม่ได้ทันที และต้องตั้งค่าเครื่องตู้ใหม่ด้วยคีย์ใหม่`)) return;
+                try { const r = await api('/admin/kiosks/' + k.kiosk_code + '/rotate-key', { method: 'POST', body: '{}' }); alert('คีย์ใหม่ของ ' + k.kiosk_code + ': ' + r.kiosk_key); renderPanel(); } catch (e) { alert(e.message); }
+              } }, 'ออกคีย์ใหม่'),
+              el('button', { class: 'small' + (k.disabled ? '' : ' danger'), onclick: async () => {
+                if (!k.disabled && !confirm(`ปิดการใช้งาน ${k.kiosk_code}? ตู้จะเข้าระบบไม่ได้และนักท่องเที่ยวเช็คอินที่ตู้นี้ไม่ได้`)) return;
+                try { await api('/admin/kiosks/' + k.kiosk_code + (k.disabled ? '/enable' : '/disable'), { method: 'POST', body: '{}' }); renderPanel(); } catch (e) { alert(e.message); }
+              } }, k.disabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'))])));
+    } else if (state.tab === 'cards') {
+      await renderCards(panel);
+    } else if (state.tab === 'community') {
+      await renderCommunity(panel);
     } else if (state.tab === 'settings') {
       await renderSettings(panel);
     } else if (state.tab === 'quests') {
@@ -224,7 +237,11 @@ async function renderPanel() {
     } else if (state.tab === 'intents') {
       const { intents } = await api('/admin/order-intents');
       panel.replaceChildren(el('p', { class: 'muted' }, 'จำนวนผู้ที่กด "สั่งซื้อการ์ดจริง" ในแต่ละการ์ด (ใช้ประเมินความต้องการก่อนผลิตจริง)'),
-        table(['การ์ด', 'ระดับ', 'ผู้สนใจ', 'ล่าสุด'], intents.map((i) => [i.name, i.rarity, String(i.interested), fmtDate(i.last_at)])));
+        table(['การ์ด', 'ระดับ', 'ผู้สนใจ', 'ยังไม่ได้แจ้ง', 'ล่าสุด', ''], intents.map((i) => [i.name, i.rarity, String(i.interested), String(i.unnotified || 0), fmtDate(i.last_at),
+          el('button', { class: 'small', disabled: !i.unnotified, onclick: async () => {
+            if (!confirm(`แจ้งผู้สนใจ ${i.unnotified} คนว่าการ์ด "${i.name}" พร้อมจัดส่งแล้ว? (แต่ละคนได้รับแจ้งครั้งเดียว)`)) return;
+            try { const r = await api('/admin/order-intents/' + i.template_id + '/notify', { method: 'POST', body: '{}' }); alert('แจ้งแล้ว ' + r.notified + ' คน'); renderPanel(); } catch (e) { alert(e.message); }
+          } }, 'แจ้งว่าพร้อมแล้ว')])));
     } else if (state.tab === 'locations') {
       await renderLocations(panel);
     }
@@ -232,6 +249,84 @@ async function renderPanel() {
 }
 
 
+
+
+// ---- printable QR sheet for physical cards ----------------------------------------------------------------------------------
+async function loadQrLibrary() {
+  if (window.qrcode) return;
+  await new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+    sc.onload = resolve;
+    sc.onerror = () => reject(new Error('โหลดตัวสร้าง QR ไม่ได้ (ต้องเชื่อมต่ออินเทอร์เน็ต)'));
+    document.head.appendChild(sc);
+  });
+}
+
+// One QR per card, 4 across, with its serial number underneath. The codes never leave this browser tab.
+async function printQrSheet(pack) {
+  const { codes, name } = await api('/admin/blind-packs/' + pack.template_id + '/codes');
+  await loadQrLibrary();
+  const w = window.open('', '_blank');
+  if (!w) throw new Error('เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง');
+  const d = w.document;
+  d.title = 'QR ' + name;
+  const style = d.createElement('style');
+  style.textContent = '@page{size:A4;margin:10mm}body{font-family:sans-serif;margin:0}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm}'
+    + '.cell{border:1px dashed #bbb;padding:3mm;text-align:center;break-inside:avoid}.cell svg{width:34mm;height:34mm}.cell b{display:block;font-size:11pt}.cell small{color:#555;font-size:8pt}'
+    + 'h1{font-size:12pt;margin:0 0 4mm}@media print{h1{display:none}}';
+  d.head.appendChild(style);
+  const title = d.createElement('h1');
+  title.textContent = `${name}: ${codes.length} ใบ (กด Ctrl+P เพื่อพิมพ์)`;
+  const grid = d.createElement('div');
+  grid.className = 'grid';
+  for (const c of codes) {
+    const qr = window.qrcode(0, 'M');
+    qr.addData(c.payload);
+    qr.make();
+    const cell = d.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); // output of the QR library for a code made of hex digits
+    const serial = d.createElement('b');
+    serial.textContent = c.serial;
+    const small = d.createElement('small');
+    small.textContent = name;
+    cell.append(serial, small);
+    grid.appendChild(cell);
+  }
+  d.body.append(title, grid);
+  setTimeout(() => w.print(), 400);
+}
+
+// ---- cards: search and void -------------------------------------------------------------------------------------------------
+async function renderCards(panel) {
+  const q = state.cardQuery || '';
+  const { cards } = await api('/admin/cards' + (q ? '?q=' + encodeURIComponent(q) : ''));
+  const input = el('input', { value: q, placeholder: 'ค้นหาจาก Username เจ้าของ หรือชื่อการ์ด', style: 'max-width:340px', onkeydown: (e) => { if (e.key === 'Enter') { state.cardQuery = input.value.trim(); renderPanel(); } } });
+  const rows = cards.map((c) => [
+    c.serial_label || '-', c.name, c.rarity, c.card_type === 'PHYSICAL_BLIND_PACK' ? 'การ์ดสุ่ม' : 'ภารกิจ/สถานที่', c.activation_status, c.owner_username || '-',
+    c.activation_status === 'VOIDED' ? '-' : el('button', { class: 'small danger', onclick: async () => {
+      const reason = prompt(`ยกเลิกการ์ด "${c.name}" ${c.serial_label || ''} ของ ${c.owner_username || '(ยังไม่มีเจ้าของ)'}?\nใส่เหตุผล (ผู้ถือครองจะได้รับแจ้ง):`);
+      if (reason === null) return;
+      try { await api('/admin/cards/' + c.card_instance_id + '/void', { method: 'POST', body: JSON.stringify({ reason }) }); renderPanel(); } catch (e) { alert(e.message); }
+    } }, 'ยกเลิกการ์ด')]);
+  panel.replaceChildren(
+    el('div', { class: 'row', style: 'gap:8px;margin-bottom:10px' }, input, el('button', { class: 'small', onclick: () => { state.cardQuery = input.value.trim(); renderPanel(); } }, 'ค้นหา')),
+    el('p', { class: 'muted' }, 'แสดงสูงสุด 100 ใบล่าสุด การยกเลิกจะนำการ์ดออกจากคลัง ตู้โชว์ และข้อเสนอแลกเปลี่ยนทันที (ยังนับเป็นจำนวนที่ผลิตแล้ว)'),
+    table(['หมายเลข', 'การ์ด', 'ระดับ', 'ประเภท', 'สถานะ', 'เจ้าของ', ''], rows));
+}
+
+// ---- community moderation ---------------------------------------------------------------------------------------------------
+async function renderCommunity(panel) {
+  const { posts } = await api('/admin/community/posts');
+  panel.replaceChildren(
+    el('p', { class: 'muted' }, 'โพสต์ที่ซ่อนจะไม่แสดงในแอป และกดไลก์/คอมเมนต์ไม่ได้ (ซ่อนแล้วคืนสถานะได้)'),
+    table(['เวลา', 'ผู้โพสต์', 'เนื้อหา', 'ไลก์ / คอมเมนต์', 'สถานะ', ''], posts.map((p) => [
+      fmtDate(p.timestamp), p.username, p.content.length > 140 ? p.content.slice(0, 140) + '…' : p.content, `${p.likes} / ${p.comments}`, p.status === 'visible' ? 'แสดง' : 'ซ่อน',
+      el('button', { class: 'small' + (p.status === 'visible' ? ' danger' : ''), onclick: async () => {
+        try { await api('/admin/community/posts/' + p.post_id, { method: 'PUT', body: JSON.stringify({ status: p.status === 'visible' ? 'hidden' : 'visible' }) }); renderPanel(); } catch (e) { alert(e.message); }
+      } }, p.status === 'visible' ? 'ซ่อน' : 'แสดงอีกครั้ง')])));
+}
 
 // ---- system settings, password, backup ----------------------------------------------------------------------------
 async function renderSettings(panel) {
@@ -415,7 +510,10 @@ async function renderPacks(panel) {
         a.download = 'activation-codes-' + p.name.replace(/[^\w\u0E00-\u0E7F-]+/g, '_') + '.csv';
         a.click();
       } catch (e) { alert(e.message); }
-    } }, 'ดาวน์โหลดรหัส (CSV)')]));
+    } }, 'ดาวน์โหลดรหัส (CSV)'),
+    el('button', { class: 'small', onclick: async () => {
+      try { await printQrSheet(p); } catch (e) { alert(e.message); }
+    } }, 'พิมพ์แผ่น QR')]));
   panel.replaceChildren(form, el('div', { class: 'panel' }, list));
 }
 

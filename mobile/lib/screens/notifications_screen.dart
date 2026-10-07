@@ -40,6 +40,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (type.startsWith('trade')) return Icons.swap_horiz;
     if (type == 'quest_approved') return Icons.check_circle;
     if (type == 'quest_rejected') return Icons.cancel;
+    if (type == 'order_ready') return Icons.local_shipping_outlined;
+    if (type == 'card_voided') return Icons.block;
     return Icons.notifications;
   }
 

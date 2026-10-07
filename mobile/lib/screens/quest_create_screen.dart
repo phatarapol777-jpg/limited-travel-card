@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../models/collection_models.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/image_tools.dart';
@@ -8,7 +9,9 @@ import '../theme.dart';
 /// Request a new quest: details, a cover picture, the reward card and how many can be given out.
 /// It goes to an admin for approval (status "pending"); once approved you get a QR code to put up at the place.
 class QuestCreateScreen extends StatefulWidget {
-  const QuestCreateScreen({super.key});
+  /// A quest that was rejected (or is still waiting) to fix and send again.
+  final Quest? existing;
+  const QuestCreateScreen({super.key, this.existing});
 
   @override
   State<QuestCreateScreen> createState() => _QuestCreateScreenState();
@@ -29,6 +32,10 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
   String _rarity = 'normal';
   String? _cover;
   String? _artwork;
+  bool _coverChanged = false;
+  bool _artworkChanged = false;
+
+  bool get _editing => widget.existing != null;
   bool _loading = true;
   bool _sending = false;
   String? _error;
@@ -36,7 +43,38 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
   @override
   void initState() {
     super.initState();
+    final q = widget.existing;
+    if (q != null) {
+      _title.text = q.title;
+      _description.text = q.description;
+      _permanent = q.permanent;
+      if (!q.permanent && q.startDate != null && q.endDate != null) {
+        _range = DateTimeRange(start: DateTime.parse(q.startDate!), end: DateTime.parse(q.endDate!));
+      }
+      final c = q.card;
+      if (c != null) {
+        _cardName.text = c.name;
+        _lore.text = c.lore ?? '';
+        _rarity = c.rarity;
+        _limit.text = '${c.mintLimit ?? 100}';
+      }
+      _loadExistingImages(q.questId);
+    }
     _loadLocations();
+  }
+
+  // The pictures of a quest still under review are private: fetch them with the creator's session.
+  Future<void> _loadExistingImages(String questId) async {
+    try {
+      final data = await apiClient.get('/quests/$questId/images');
+      if (!mounted) return;
+      setState(() {
+        _cover = data['cover_image'] as String?;
+        _artwork = data['card_image'] as String?;
+      });
+    } catch (_) {
+      // the pictures just show as empty; the old ones are kept unless a new one is picked
+    }
   }
 
   @override
@@ -53,6 +91,12 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
       if (!mounted) return;
       setState(() {
         _locations = (data['locations'] as List).map((e) => TravelLocation.fromJson(e)).toList();
+        final wanted = widget.existing?.locationId;
+        if (wanted != null) {
+          for (final l in _locations) {
+            if (l.locationId == wanted) _location = l;
+          }
+        }
         _loading = false;
       });
     } catch (e) {
@@ -66,12 +110,22 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
   // The picker must start inside the tap handler (iOS Safari), so no await before calling it.
   Future<void> _pickCover() async {
     final url = await pickJpeg(maxSide: 900, maxChars: 420000);
-    if (url != null && mounted) setState(() => _cover = url);
+    if (url != null && mounted) {
+      setState(() {
+        _cover = url;
+        _coverChanged = true;
+      });
+    }
   }
 
   Future<void> _pickArtwork() async {
     final url = await pickJpeg(maxSide: 1100, maxChars: 750000);
-    if (url != null && mounted) setState(() => _artwork = url);
+    if (url != null && mounted) {
+      setState(() {
+        _artwork = url;
+        _artworkChanged = true;
+      });
+    }
   }
 
   Future<void> _pickRange() async {
@@ -98,26 +152,31 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
       _error = null;
     });
     try {
-      await apiClient.post('/quests', {
+      final body = {
         'title': _title.text.trim(),
         'location_id': _location!.locationId,
         'description': _description.text.trim(),
-        'cover_image': _cover,
+        if (!_editing || _coverChanged) 'cover_image': _cover,
         'permanent': _permanent,
         if (!_permanent) 'start_date': _fmt(_range!.start),
         if (!_permanent) 'end_date': _fmt(_range!.end),
         'card_name': _cardName.text.trim(),
-        'card_image': _artwork,
+        if (!_editing || _artworkChanged) 'card_image': _artwork,
         'card_lore': _lore.text.trim(),
         'rarity': _rarity,
         'mint_limit': int.tryParse(_limit.text.trim()) ?? 0,
-      });
+      };
+      if (_editing) {
+        await apiClient.put('/quests/${widget.existing!.questId}', body);
+      } else {
+        await apiClient.post('/quests', body);
+      }
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.hourglass_top, color: AppColors.navy, size: 36),
-          title: const Text('ส่งคำร้องแล้ว'),
+          title: Text(_editing ? 'ส่งใหม่แล้ว' : 'ส่งคำร้องแล้ว'),
           content: const Text('แอดมินจะตรวจสอบเนื้อหาและรูปภาพ เมื่ออนุมัติแล้วคุณจะได้รับการแจ้งเตือน และดาวน์โหลด QR Code ไปติดที่สถานที่จริงได้'),
           actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ตกลง'))],
         ),
@@ -166,7 +225,7 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('สร้างภารกิจใหม่')),
+      appBar: AppBar(title: Text(_editing ? 'แก้ไขภารกิจ' : 'สร้างภารกิจใหม่')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Form(
@@ -265,7 +324,7 @@ class _QuestCreateScreenState extends State<QuestCreateScreen> {
                     onPressed: _sending ? null : _submit,
                     child: _sending
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('ส่งคำร้องให้แอดมินตรวจสอบ'),
+                        : Text(_editing ? 'บันทึกและส่งให้แอดมินตรวจสอบอีกครั้ง' : 'ส่งคำร้องให้แอดมินตรวจสอบ'),
                   ),
                   const SizedBox(height: 30),
                 ],

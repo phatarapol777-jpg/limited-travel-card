@@ -61,6 +61,34 @@ class _MyQuestsScreenState extends State<MyQuestsScreen> {
     }
   }
 
+  Future<void> _edit(Quest q) async {
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => QuestCreateScreen(existing: q)));
+    if (saved == true) _load();
+  }
+
+  Future<void> _close(Quest q) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(q.status == 'pending' ? 'ถอนคำร้อง?' : 'ปิดภารกิจนี้?'),
+        content: Text(q.status == 'pending'
+            ? 'คำร้องจะถูกยกเลิก'
+            : 'ผู้ใช้จะสแกน QR รับการ์ดเพิ่มไม่ได้ ส่วนคนที่รับไปแล้วยังมีการ์ดอยู่ และเปิดภารกิจนี้อีกครั้งไม่ได้'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('ยกเลิก')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('ยืนยัน', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await apiClient.post('/quests/${q.questId}/close', {});
+      _load();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Future<void> _showQr(Quest q) async {
     try {
       final data = await apiClient.get('/quests/${q.questId}/qr');
@@ -128,6 +156,19 @@ class _MyQuestsScreenState extends State<MyQuestsScreen> {
                                   label: const Text('ดู / ดาวน์โหลด QR Code'),
                                   onPressed: () => _showQr(q),
                                 ),
+                              ],
+                              if (q.status == 'pending' || q.status == 'rejected' || q.status == 'approved') ...[
+                                const SizedBox(height: 6),
+                                Row(children: [
+                                  if (q.status != 'approved')
+                                    Expanded(child: TextButton.icon(icon: const Icon(Icons.edit_outlined), label: Text(q.status == 'rejected' ? 'แก้ไขแล้วส่งใหม่' : 'แก้ไข'), onPressed: () => _edit(q))),
+                                  if (q.status != 'rejected')
+                                    Expanded(child: TextButton.icon(
+                                      icon: const Icon(Icons.stop_circle_outlined, color: Colors.red),
+                                      label: Text(q.status == 'pending' ? 'ถอนคำร้อง' : 'ปิดภารกิจ', style: const TextStyle(color: Colors.red)),
+                                      onPressed: () => _close(q),
+                                    )),
+                                ]),
                               ],
                             ]),
                           ),

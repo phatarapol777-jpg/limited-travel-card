@@ -232,7 +232,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       }
     } on ApiException catch (e) {
       if (first) rethrow;
-      if (e.message.contains('คีย์')) _stop('คีย์ตู้ไม่ถูกต้อง');
+      if (e.message.contains('คีย์')) _stop('คีย์ตู้ไม่ถูกต้อง (อาจถูกออกคีย์ใหม่) กรุณาตั้งค่าตู้อีกครั้ง');
+      if (e.message.contains('ปิดใช้งาน')) _stop('ตู้นี้ถูกปิดใช้งานโดยผู้ดูแลระบบ');
     } catch (_) {
       if (first) rethrow;
       if (mounted && _online) setState(() => _online = false);
