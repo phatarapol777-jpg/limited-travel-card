@@ -210,6 +210,7 @@ function addColumns(table, columns) {
   }
 }
 addColumns('checkin_kiosks', { kiosk_code: 'TEXT', last_seen_at: 'TEXT', last_ip: 'TEXT', last_lat: 'REAL', last_lng: 'REAL' });
+addColumns('checkin_kiosks', { key_version: 'INTEGER NOT NULL DEFAULT 0', disabled: 'INTEGER NOT NULL DEFAULT 0' });
 addColumns('checkin_sessions', { session_key: 'TEXT', env_ok: 'INTEGER', phone_ip: 'TEXT', phone_lat: 'REAL', phone_lng: 'REAL' });
 db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosks_code ON checkin_kiosks(kiosk_code) WHERE kiosk_code IS NOT NULL;
@@ -373,5 +374,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
+
+addColumns('physical_order_intents', { notified_at: 'TEXT' });
 
 module.exports = db;

@@ -26,7 +26,7 @@ router.get('/locations/:id', (req, res) => {
 router.get('/kiosks', (req, res) => {
   require('../services/kioskService').ensureKioskCodes();
   const kiosks = db.prepare(`SELECT k.kiosk_id, k.kiosk_code, k.location_id, k.status, l.name AS location_name, l.province
-    FROM checkin_kiosks k JOIN locations l ON l.location_id = k.location_id ORDER BY l.name`).all();
+    FROM checkin_kiosks k JOIN locations l ON l.location_id = k.location_id WHERE k.disabled = 0 ORDER BY l.name`).all();
   res.json({ kiosks });
 });
 

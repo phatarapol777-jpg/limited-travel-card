@@ -7,10 +7,12 @@ const { SECRET } = require('../secret');
 // database resets as long as KIOSK_SECRET is set in the environment.
 const KIOSK_SECRET = SECRET;
 
-function kioskKey(code) {
+/** Version 0 keeps the original derivation, so keys already in use stay valid; "rotate key" bumps the version. */
+function kioskKey(code, version = 0) {
   // a kiosk without a code would get the same key as every other code-less kiosk: refuse instead
   if (!code) throw new Error('kioskKey needs a kiosk code');
-  return crypto.createHmac('sha256', KIOSK_SECRET).update(`kiosk|${code}`).digest('hex').slice(0, 20);
+  const material = version > 0 ? `kiosk|${code}|v${version}` : `kiosk|${code}`;
+  return crypto.createHmac('sha256', KIOSK_SECRET).update(material).digest('hex').slice(0, 20);
 }
 
 /** The next free code: KSK-001, KSK-002, ... one above the highest number in use. */

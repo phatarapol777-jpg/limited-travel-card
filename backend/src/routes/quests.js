@@ -3,6 +3,8 @@ const db = require('../db');
 const { newId, authMiddleware } = require('../util');
 const { mintCard, normalizeRarity, getCard, serialLabel } = require('../services/cardService');
 const Q = require('../services/questService');
+const settings = require('../services/settings');
+const { haversineMeters } = require('../services/kioskService');
 
 const router = express.Router();
 const MAX_PENDING_PER_USER = 10;
@@ -51,32 +53,55 @@ const QUEST_SELECT = `SELECT q.*, (q.cover_image IS NOT NULL) AS has_cover, l.na
   FROM quests q JOIN locations l ON l.location_id = q.location_id
   LEFT JOIN card_templates t ON t.template_id = q.template_id JOIN users u ON u.user_id = q.creator_user_id`;
 
-// Submit a quest request (Status: pending). Any signed-in user may submit; an admin must approve it.
-router.post('/', authMiddleware, (req, res) => {
-  const b = req.body || {};
+/**
+ * Validates a quest form. With `existing` (an edit), the images are optional: a missing image keeps the old one.
+ * Returns {error} or {data}.
+ */
+function parseQuestForm(b, existing = null) {
   const title = String(b.title || '').trim();
   const description = String(b.description || '').trim();
   const cardName = String(b.card_name || '').trim();
   const lore = String(b.card_lore || '').trim();
   const permanent = b.permanent === true;
-  if (!title || title.length > 80) return res.status(400).json({ error: 'ชื่อภารกิจต้องไม่ว่างและไม่เกิน 80 ตัวอักษร' });
-  if (!description || description.length > 2000) return res.status(400).json({ error: 'กรอกคำอธิบายภารกิจ (ไม่เกิน 2,000 ตัวอักษร)' });
-  if (!cardName || cardName.length > 60) return res.status(400).json({ error: 'ชื่อการ์ดต้องไม่ว่างและไม่เกิน 60 ตัวอักษร' });
-  if (lore.length > 500) return res.status(400).json({ error: 'เรื่องราวการ์ดยาวเกิน 500 ตัวอักษร' });
-  if (!db.prepare('SELECT 1 FROM locations WHERE location_id = ?').get(b.location_id)) return res.status(400).json({ error: 'ไม่พบสถานที่ที่เลือก' });
+  if (!title || title.length > 80) return { error: 'ชื่อภารกิจต้องไม่ว่างและไม่เกิน 80 ตัวอักษร' };
+  if (!description || description.length > 2000) return { error: 'กรอกคำอธิบายภารกิจ (ไม่เกิน 2,000 ตัวอักษร)' };
+  if (!cardName || cardName.length > 60) return { error: 'ชื่อการ์ดต้องไม่ว่างและไม่เกิน 60 ตัวอักษร' };
+  if (lore.length > 500) return { error: 'เรื่องราวการ์ดยาวเกิน 500 ตัวอักษร' };
+  if (!db.prepare('SELECT 1 FROM locations WHERE location_id = ?').get(b.location_id)) return { error: 'ไม่พบสถานที่ที่เลือก' };
   const rarity = String(b.rarity || '').toLowerCase();
-  if (!['normal', 'rare', 'special'].includes(rarity)) return res.status(400).json({ error: 'เลือกระดับความหายาก (Normal / Rare / Special)' });
+  if (!['normal', 'rare', 'special'].includes(rarity)) return { error: 'เลือกระดับความหายาก (Normal / Rare / Special)' };
   const limit = Number(b.mint_limit);
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_MINT_LIMIT) return res.status(400).json({ error: `จำนวนการ์ดสูงสุดต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_MINT_LIMIT}` });
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_MINT_LIMIT) return { error: `จำนวนการ์ดสูงสุดต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_MINT_LIMIT}` };
   if (!permanent) {
-    if (!Q.validDate(b.start_date) || !Q.validDate(b.end_date)) return res.status(400).json({ error: 'ระบุวันที่เริ่มและวันที่สิ้นสุด หรือเลือกภารกิจถาวร' });
-    if (b.end_date < b.start_date) return res.status(400).json({ error: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' });
-    if (b.end_date < Q.bangkokToday()) return res.status(400).json({ error: 'วันที่สิ้นสุดผ่านมาแล้ว' });
+    if (!Q.validDate(b.start_date) || !Q.validDate(b.end_date)) return { error: 'ระบุวันที่เริ่มและวันที่สิ้นสุด หรือเลือกภารกิจถาวร' };
+    if (b.end_date < b.start_date) return { error: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' };
+    if (b.end_date < Q.bangkokToday()) return { error: 'วันที่สิ้นสุดผ่านมาแล้ว' };
   }
-  const coverErr = Q.imageError(b.cover_image, Q.MAX_COVER_CHARS, 'ภาพประกอบภารกิจ');
-  if (coverErr) return res.status(400).json({ error: coverErr });
-  const artErr = Q.imageError(b.card_image, Q.MAX_CARD_IMAGE_CHARS, 'ภาพการ์ด');
-  if (artErr) return res.status(400).json({ error: artErr });
+  let cover = b.cover_image;
+  let art = b.card_image;
+  if (existing && (cover === undefined || cover === null || cover === '')) cover = existing.cover_image;
+  else {
+    const coverErr = Q.imageError(cover, Q.MAX_COVER_CHARS, 'ภาพประกอบภารกิจ');
+    if (coverErr) return { error: coverErr };
+  }
+  if (existing && (art === undefined || art === null || art === '')) art = existing.card_image;
+  else {
+    const artErr = Q.imageError(art, Q.MAX_CARD_IMAGE_CHARS, 'ภาพการ์ด');
+    if (artErr) return { error: artErr };
+  }
+  return {
+    data: {
+      title, description, cardName, lore, permanent, rarity, limit, cover, art,
+      location_id: b.location_id, start_date: permanent ? null : b.start_date, end_date: permanent ? null : b.end_date,
+    },
+  };
+}
+
+// Submit a quest request (Status: pending). Any signed-in user may submit; an admin must approve it.
+router.post('/', authMiddleware, (req, res) => {
+  const parsed = parseQuestForm(req.body || {});
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const d = parsed.data;
   const pending = db.prepare("SELECT COUNT(*) AS c FROM quests WHERE creator_user_id = ? AND status = 'pending'").get(req.user.user_id).c;
   if (pending >= MAX_PENDING_PER_USER) return res.status(429).json({ error: 'มีคำร้องที่รออนุมัติมากเกินไป กรุณารอให้แอดมินตรวจสอบก่อน' });
 
@@ -86,13 +111,41 @@ router.post('/', authMiddleware, (req, res) => {
   db.transaction(() => {
     db.prepare(`INSERT INTO card_templates (template_id, location_id, mission_id, name, icon, color_hex, type, rarity, card_type, image, lore, mint_limit, minted_count, quest_id)
       VALUES (?, ?, NULL, ?, 'style', '#4C6B8A', 'quest', ?, 'QUEST_LOCATION', ?, ?, ?, 0, ?)`)
-      .run(templateId, b.location_id, cardName, normalizeRarity(rarity), b.card_image, lore || null, limit, questId);
+      .run(templateId, d.location_id, d.cardName, normalizeRarity(d.rarity), d.art, d.lore || null, d.limit, questId);
     db.prepare(`INSERT INTO quests (quest_id, creator_user_id, title, location_id, description, cover_image, start_date, end_date, permanent, status, template_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-      .run(questId, req.user.user_id, title, b.location_id, description, b.cover_image, permanent ? null : b.start_date, permanent ? null : b.end_date,
-        permanent ? 1 : 0, templateId, now);
+      .run(questId, req.user.user_id, d.title, d.location_id, d.description, d.cover, d.start_date, d.end_date, d.permanent ? 1 : 0, templateId, now);
   })();
   res.status(201).json({ quest_id: questId, status: 'pending' });
+});
+
+// Fix a quest that was rejected (or is still waiting) and send it for review again. Approved quests are closed and re-created instead.
+router.put('/:id', authMiddleware, (req, res) => {
+  const q = db.prepare('SELECT q.*, t.image AS card_image FROM quests q LEFT JOIN card_templates t ON t.template_id = q.template_id WHERE q.quest_id = ?').get(req.params.id);
+  if (!q || q.creator_user_id !== req.user.user_id) return res.status(404).json({ error: 'ไม่พบภารกิจ' });
+  if (!['pending', 'rejected'].includes(q.status)) {
+    return res.status(409).json({ error: 'แก้ไขได้เฉพาะภารกิจที่รออนุมัติหรือถูกปฏิเสธ ภารกิจที่อนุมัติแล้วให้ปิดแล้วสร้างใหม่' });
+  }
+  const parsed = parseQuestForm(req.body || {}, q);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const d = parsed.data;
+  db.transaction(() => {
+    db.prepare(`UPDATE quests SET title = ?, location_id = ?, description = ?, cover_image = ?, start_date = ?, end_date = ?, permanent = ?,
+        status = 'pending', reject_reason = NULL, reviewed_at = NULL, reviewed_by = NULL WHERE quest_id = ?`)
+      .run(d.title, d.location_id, d.description, d.cover, d.start_date, d.end_date, d.permanent ? 1 : 0, q.quest_id);
+    db.prepare('UPDATE card_templates SET location_id = ?, name = ?, rarity = ?, image = ?, lore = ?, mint_limit = ? WHERE template_id = ?')
+      .run(d.location_id, d.cardName, normalizeRarity(d.rarity), d.art, d.lore || null, d.limit, q.template_id);
+  })();
+  res.json({ quest_id: q.quest_id, status: 'pending' });
+});
+
+// The creator withdraws a waiting request or switches off a running quest (people who already claimed keep their cards).
+router.post('/:id/close', authMiddleware, (req, res) => {
+  const q = db.prepare('SELECT * FROM quests WHERE quest_id = ?').get(req.params.id);
+  if (!q || q.creator_user_id !== req.user.user_id) return res.status(404).json({ error: 'ไม่พบภารกิจ' });
+  if (!['pending', 'approved'].includes(q.status)) return res.status(409).json({ error: 'ภารกิจนี้ปิดหรือถูกปฏิเสธไปแล้ว' });
+  db.prepare("UPDATE quests SET status = 'closed' WHERE quest_id = ?").run(q.quest_id);
+  res.json({ status: 'closed' });
 });
 
 // The signed-in user's own quest requests (status, reject reason, how many cards are left).
@@ -137,6 +190,20 @@ router.post('/claim', authMiddleware, (req, res) => {
   const phase = Q.questPhase(quest);
   if (phase === 'upcoming') return res.status(409).json({ error: `ภารกิจนี้จะเริ่มวันที่ ${quest.start_date}` });
   if (phase === 'ended') return res.status(409).json({ error: 'ภารกิจนี้หมดเวลาแล้ว' });
+
+  // The QR is printed and fixed, so a photo of it works from anywhere: also require the phone to be near the place.
+  if (settings.get('quest_geo_check')) {
+    const { lat, lng } = req.body || {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      return res.status(400).json({ code: 'location_required', error: 'ต้องเปิดตำแหน่ง (GPS) บนมือถือเพื่อรับการ์ดภารกิจ กรุณาอนุญาตการเข้าถึงตำแหน่งแล้วสแกนอีกครั้ง' });
+    }
+    const place = db.prepare('SELECT latitude, longitude FROM locations WHERE location_id = ?').get(quest.location_id);
+    const distance = Math.round(haversineMeters(lat, lng, place.latitude, place.longitude));
+    const radius = settings.get('quest_geo_radius_m');
+    if (distance > radius) {
+      return res.status(403).json({ code: 'too_far', error: `คุณอยู่ห่างจากสถานที่ภารกิจประมาณ ${distance.toLocaleString('en-US')} เมตร (ต้องอยู่ภายใน ${radius.toLocaleString('en-US')} เมตร)` });
+    }
+  }
 
   const result = db.transaction(() => {
     if (db.prepare('SELECT 1 FROM quest_claims WHERE quest_id = ? AND user_id = ?').get(questId, req.user.user_id)) return { error: 'duplicate' };

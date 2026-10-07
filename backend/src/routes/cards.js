@@ -6,7 +6,7 @@ const { CARD_SELECT, cardView, getCard, logOwnership } = require('../services/ca
 const router = express.Router();
 
 router.get('/', authMiddleware, (req, res) => {
-  const cards = db.prepare(`${CARD_SELECT} WHERE c.owner_user_id = ? ORDER BY c.acquired_at DESC`).all(req.user.user_id).map(cardView);
+  const cards = db.prepare(`${CARD_SELECT} WHERE c.owner_user_id = ? AND c.activation_status != 'VOIDED' ORDER BY c.acquired_at DESC`).all(req.user.user_id).map(cardView);
   res.json({ cards });
 });
 
@@ -41,6 +41,9 @@ router.post('/activate', authMiddleware, (req, res) => {
     const when = (first && first.created_at) || card.claimed_at || '';
     return { error: `การ์ดใบนี้ถูกเปิดใช้งานไปแล้วโดยผู้ใช้ ${who} เมื่อวันที่ ${when}`, claimed_by: who, claimed_at: when };
   };
+  if (card.activation_status === 'VOIDED') {
+    return res.status(409).json({ code: 'voided', error: 'การ์ดใบนี้ถูกยกเลิกโดยผู้ดูแลระบบ ไม่สามารถเปิดใช้งานได้' });
+  }
   if (card.activation_status !== 'UNCLAIMED' || card.owner_user_id) {
     return res.status(409).json(claimedMessage());
   }
@@ -63,7 +66,7 @@ router.post('/activate', authMiddleware, (req, res) => {
 // "Order physical card": only records interest (demand check). No payment, no shipping address.
 router.post('/:id/order-intent', authMiddleware, (req, res) => {
   const card = db.prepare('SELECT c.*, t.name FROM all_cards c JOIN card_templates t ON t.template_id = c.template_id WHERE c.card_instance_id = ?').get(req.params.id);
-  if (!card || card.owner_user_id !== req.user.user_id) return res.status(404).json({ error: 'ไม่พบการ์ดใบนี้ในคลังของคุณ' });
+  if (!card || card.owner_user_id !== req.user.user_id || card.activation_status === 'VOIDED') return res.status(404).json({ error: 'ไม่พบการ์ดใบนี้ในคลังของคุณ' });
   if (card.card_type !== 'QUEST_LOCATION') return res.status(400).json({ error: 'การ์ดชนิดนี้เป็นการ์ดจริงอยู่แล้ว สั่งซื้อได้เฉพาะการ์ดภารกิจ/สถานที่' });
   const existing = db.prepare('SELECT 1 FROM physical_order_intents WHERE user_id = ? AND template_id = ?').get(req.user.user_id, card.template_id);
   if (!existing) {

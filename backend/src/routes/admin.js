@@ -227,10 +227,36 @@ router.get('/checkins', (req, res) => {
 router.get('/kiosks', (req, res) => {
   const { kioskKey, ensureKioskCodes } = require('../services/kioskService');
   ensureKioskCodes();
-  const rows = db.prepare(`SELECT k.kiosk_code, k.last_seen_at, l.name AS location_name, l.province
+  const rows = db.prepare(`SELECT k.kiosk_code, k.last_seen_at, k.key_version, k.disabled, l.name AS location_name, l.province
     FROM checkin_kiosks k JOIN locations l ON l.location_id = k.location_id ORDER BY k.kiosk_code`).all();
-  res.json({ kiosks: rows.map((k) => ({ ...k, kiosk_key: kioskKey(k.kiosk_code) })) });
+  res.json({ kiosks: rows.map((k) => ({ ...k, disabled: !!k.disabled, kiosk_key: kioskKey(k.kiosk_code, k.key_version) })) });
 });
+
+// A leaked key: give the kiosk a new one (the old one stops working at once and any open session there is ended).
+router.post('/kiosks/:code/rotate-key', (req, res) => {
+  const { kioskKey } = require('../services/kioskService');
+  const k = db.prepare('SELECT * FROM checkin_kiosks WHERE kiosk_code = ?').get(req.params.code);
+  if (!k) return res.status(404).json({ error: 'ไม่พบตู้' });
+  db.transaction(() => {
+    db.prepare('UPDATE checkin_kiosks SET key_version = key_version + 1 WHERE kiosk_id = ?').run(k.kiosk_id);
+    db.prepare("UPDATE checkin_sessions SET status = 'expired' WHERE kiosk_id = ? AND status = 'open'").run(k.kiosk_id);
+  })();
+  res.json({ kiosk_code: k.kiosk_code, kiosk_key: kioskKey(k.kiosk_code, k.key_version + 1) });
+});
+
+function setKioskDisabled(disable) {
+  return (req, res) => {
+    const k = db.prepare('SELECT * FROM checkin_kiosks WHERE kiosk_code = ?').get(req.params.code);
+    if (!k) return res.status(404).json({ error: 'ไม่พบตู้' });
+    db.transaction(() => {
+      db.prepare('UPDATE checkin_kiosks SET disabled = ? WHERE kiosk_id = ?').run(disable ? 1 : 0, k.kiosk_id);
+      if (disable) db.prepare("UPDATE checkin_sessions SET status = 'expired' WHERE kiosk_id = ? AND status = 'open'").run(k.kiosk_id);
+    })();
+    res.json({ kiosk_code: k.kiosk_code, disabled: disable });
+  };
+}
+router.post('/kiosks/:code/disable', setKioskDisabled(true));
+router.post('/kiosks/:code/enable', setKioskDisabled(false));
 
 router.get('/audit', (req, res) => {
   const audit = db.prepare(`SELECT a.log_id, a.created_at, a.face_match_score, a.passed, a.edge_passed, a.edge_ms, a.reason, a.checks_json, a.session_id,
@@ -349,9 +375,78 @@ router.get('/blind-packs/:id/codes', (req, res) => {
   });
 });
 
+// ---- cards: search and void -----------------------------------------------------------------------------------------
+router.get('/cards', (req, res) => {
+  const { CARD_SELECT, cardView } = require('../services/cardService');
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  const like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
+  const rows = db.prepare(`${CARD_SELECT} LEFT JOIN users ou ON ou.user_id = c.owner_user_id
+    ${q ? "WHERE (ou.username LIKE ? ESCAPE '\\' OR t.name LIKE ? ESCAPE '\\')" : ''} ORDER BY c.rowid DESC LIMIT 100`)
+    .all(...(q ? [like, like] : []));
+  const owners = new Map(db.prepare('SELECT user_id, username FROM users').all().map((u) => [u.user_id, u.username]));
+  res.json({ cards: rows.map((r) => ({ ...cardView(r), owner_username: owners.get(r.owner_user_id) || null })) });
+});
+
+// Cancel a card for good (misprinted, lost, fraudulent). It leaves the owner's collection, showcase and any pending trade.
+router.post('/cards/:id/void', (req, res) => {
+  const { resolveTrade } = require('../services/tradeService');
+  const { notify } = require('../services/notify');
+  const { logOwnership } = require('../services/cardService');
+  const reason = String((req.body || {}).reason || '').trim().slice(0, 300);
+  const card = db.prepare('SELECT c.*, t.name FROM all_cards c JOIN card_templates t ON t.template_id = c.template_id WHERE c.card_instance_id = ?').get(req.params.id);
+  if (!card) return res.status(404).json({ error: 'ไม่พบการ์ด' });
+  if (card.activation_status === 'VOIDED') return res.status(409).json({ error: 'การ์ดใบนี้ถูกยกเลิกไปแล้ว' });
+  db.transaction(() => {
+    for (const t of db.prepare("SELECT * FROM trades WHERE status = 'pending' AND (offered_card_id = ? OR requested_card_id = ?)").all(card.card_instance_id, card.card_instance_id)) {
+      resolveTrade(t, 'cancelled');
+      for (const uid of [t.from_user_id, t.to_user_id]) notify(uid, 'trade_cancelled', 'ข้อเสนอแลกเปลี่ยนถูกยกเลิก เพราะการ์ดในข้อเสนอถูกยกเลิกโดยผู้ดูแล', { trade_id: t.trade_id });
+    }
+    db.prepare("UPDATE all_cards SET activation_status = 'VOIDED' WHERE card_instance_id = ?").run(card.card_instance_id);
+    db.prepare('DELETE FROM user_pins WHERE card_instance_id = ?').run(card.card_instance_id);
+    logOwnership(card.card_instance_id, card.owner_user_id, null, 'void');
+    if (card.owner_user_id) notify(card.owner_user_id, 'card_voided', `การ์ด "${card.name}" ของคุณถูกยกเลิกโดยผู้ดูแลระบบ${reason ? ': ' + reason : ''}`, { card_instance_id: card.card_instance_id });
+  })();
+  res.json({ status: 'voided' });
+});
+
+// Tell the people who tapped "order physical card" that it is ready. Idempotent: each person is told once.
+router.post('/order-intents/:templateId/notify', (req, res) => {
+  const { notify } = require('../services/notify');
+  const t = db.prepare('SELECT name FROM card_templates WHERE template_id = ?').get(req.params.templateId);
+  if (!t) return res.status(404).json({ error: 'ไม่พบการ์ด' });
+  const custom = String((req.body || {}).message || '').trim().slice(0, 300);
+  const text = custom || `การ์ด "${t.name}" ที่คุณสนใจพร้อมจัดส่งแล้ว ติดต่อผู้ดูแลเพื่อสั่งซื้อได้เลย`;
+  const pending = db.prepare('SELECT intent_id, user_id FROM physical_order_intents WHERE template_id = ? AND notified_at IS NULL').all(req.params.templateId);
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    for (const i of pending) {
+      notify(i.user_id, 'order_ready', text, { template_id: req.params.templateId });
+      db.prepare('UPDATE physical_order_intents SET notified_at = ? WHERE intent_id = ?').run(now, i.intent_id);
+    }
+  })();
+  res.json({ notified: pending.length });
+});
+
+// ---- community moderation ----------------------------------------------------------------------------------------------
+router.get('/community/posts', (req, res) => {
+  const rows = db.prepare(`SELECT p.post_id, p.content, p.status, p.timestamp, u.username,
+      (SELECT COUNT(*) FROM community_likes l WHERE l.post_id = p.post_id) AS likes,
+      (SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.post_id) AS comments
+    FROM community_posts p JOIN users u ON u.user_id = p.user_id ORDER BY p.timestamp DESC LIMIT 100`).all();
+  res.json({ posts: rows });
+});
+
+router.put('/community/posts/:id', (req, res) => {
+  const status = (req.body || {}).status;
+  if (!['visible', 'hidden'].includes(status)) return res.status(400).json({ error: 'สถานะต้องเป็น visible หรือ hidden' });
+  const changed = db.prepare('UPDATE community_posts SET status = ? WHERE post_id = ?').run(status, req.params.id).changes;
+  if (!changed) return res.status(404).json({ error: 'ไม่พบโพสต์' });
+  res.json({ status });
+});
+
 // How many people tapped "order physical card" for each design.
 router.get('/order-intents', (req, res) => {
-  const rows = db.prepare(`SELECT t.template_id, t.name, t.rarity, COUNT(i.intent_id) AS interested, MAX(i.created_at) AS last_at
+  const rows = db.prepare(`SELECT t.template_id, t.name, t.rarity, COUNT(i.intent_id) AS interested, SUM(i.notified_at IS NULL) AS unnotified, MAX(i.created_at) AS last_at
     FROM physical_order_intents i JOIN card_templates t ON t.template_id = i.template_id GROUP BY t.template_id ORDER BY interested DESC, last_at DESC`).all();
   res.json({ intents: rows });
 });

@@ -39,8 +39,11 @@ router.post('/posts', authMiddleware, (req, res) => {
   res.status(201).json({ post_id: postId });
 });
 
+const isVisible = (id) => !!db.prepare("SELECT 1 FROM community_posts WHERE post_id = ? AND status = 'visible'").get(id);
+
 router.post('/posts/:id/like', authMiddleware, (req, res) => {
   const postId = req.params.id;
+  if (!isVisible(postId)) return res.status(404).json({ error: 'ไม่พบโพสต์' });
   const existing = db.prepare('SELECT 1 FROM community_likes WHERE post_id = ? AND user_id = ?').get(postId, req.user.user_id);
   if (existing) {
     db.prepare('DELETE FROM community_likes WHERE post_id = ? AND user_id = ?').run(postId, req.user.user_id);
@@ -51,12 +54,14 @@ router.post('/posts/:id/like', authMiddleware, (req, res) => {
 });
 
 router.get('/posts/:id/comments', (req, res) => {
+  if (!isVisible(req.params.id)) return res.status(404).json({ error: 'ไม่พบโพสต์' });
   const comments = db.prepare(`SELECT c.*, u.username FROM community_comments c
     JOIN users u ON u.user_id = c.user_id WHERE c.post_id = ? ORDER BY c.timestamp ASC`).all(req.params.id);
   res.json({ comments });
 });
 
 router.post('/posts/:id/comments', authMiddleware, (req, res) => {
+  if (!isVisible(req.params.id)) return res.status(404).json({ error: 'ไม่พบโพสต์' });
   const { content } = req.body || {};
   if (!content || !content.trim()) return res.status(400).json({ error: 'Content required' });
   const commentId = newId('cmt');

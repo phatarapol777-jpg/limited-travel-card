@@ -13,9 +13,10 @@ const MAX_PHOTO_CHARS = 1_500_000;
 function kioskAuth(req, res, next) {
   const kiosk = db.prepare('SELECT * FROM checkin_kiosks WHERE kiosk_code = ?').get(req.params.code);
   const sent = req.headers['x-kiosk-key'];
-  if (!kiosk || typeof sent !== 'string' || !K.safeEqual(sent, K.kioskKey(kiosk.kiosk_code))) {
+  if (!kiosk || typeof sent !== 'string' || !K.safeEqual(sent, K.kioskKey(kiosk.kiosk_code, kiosk.key_version))) {
     return res.status(401).json({ error: 'รหัสหรือคีย์ของตู้ไม่ถูกต้อง' });
   }
+  if (kiosk.disabled) return res.status(403).json({ code: 'kiosk_disabled', error: 'ตู้นี้ถูกปิดใช้งานโดยผู้ดูแล' });
   req.kiosk = kiosk;
   next();
 }
@@ -144,6 +145,7 @@ router.post('/open', authMiddleware, (req, res) => {
   const { kiosk_code } = req.body || {};
   const kiosk = typeof kiosk_code === 'string' ? db.prepare('SELECT * FROM checkin_kiosks WHERE kiosk_code = ?').get(kiosk_code) : null;
   if (!kiosk) return res.status(404).json({ error: 'ไม่พบตู้เช็คอินนี้' });
+  if (kiosk.disabled) return res.status(409).json({ error: 'ตู้นี้ปิดใช้งานชั่วคราว' });
   if (!req.user.face_descriptor) {
     return res.status(409).json({ code: 'no_face_enrolled', error: 'ยังไม่ได้ลงทะเบียนใบหน้า กรุณาสแกนใบหน้าที่หน้าโปรไฟล์ก่อนเช็คอิน' });
   }
