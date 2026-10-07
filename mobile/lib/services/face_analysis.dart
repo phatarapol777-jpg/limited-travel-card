@@ -15,6 +15,8 @@ class FaceAnalysis {
 
   String get problemMessage {
     switch (problem) {
+      case 'novideo':
+        return 'ยังไม่พบภาพจากกล้อง กรุณารอสักครู่';
       case 'multiple':
         return 'พบหลายใบหน้าในภาพ กรุณาให้เหลือเฉพาะคุณคนเดียว';
       case 'small':

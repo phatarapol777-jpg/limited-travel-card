@@ -12,8 +12,9 @@ Future<void> preloadFaceModels() async {
   } catch (_) {}
 }
 
-/// Detects the face in a JPEG data URL (exactly one clear face required) and returns its descriptor and head angle.
-Future<FaceAnalysis> analyzeFace(String dataUrl) async {
-  final result = await _travelFace.callMethod<JSPromise<JSAny?>>('analyze'.toJS, dataUrl.toJS).toDart;
+/// Checks the current live camera frame: head angle always, plus the face descriptor when the pose matches
+/// [mode] ('frontal' or 'turned'). Needs exactly one clear face.
+Future<FaceAnalysis> analyzeLiveFrame(String mode) async {
+  final result = await _travelFace.callMethod<JSPromise<JSAny?>>('liveFrame'.toJS, mode.toJS).toDart;
   return FaceAnalysis.fromJson(jsonDecode((result as JSString).toDart) as Map<String, dynamic>);
 }

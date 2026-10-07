@@ -64,6 +64,19 @@
         }
         return ready;
       }
+      // The camera plugin's <video> may sit inside shadow roots, so search them too.
+      function findVideo() {
+        const roots = [document];
+        let best = null;
+        while (roots.length) {
+          const root = roots.pop();
+          root.querySelectorAll('*').forEach((el) => {
+            if (el.tagName === 'VIDEO' && el.srcObject && el.readyState >= 2 && el.videoWidth > 0) best = el;
+            if (el.shadowRoot) roots.push(el.shadowRoot);
+          });
+        }
+        return best;
+      }
       function loadImage(dataUrl) {
         return new Promise((resolve, reject) => {
           const img = new Image();
@@ -74,20 +87,27 @@
       }
       return {
         preload: () => ensureModels().then(() => true).catch(() => false),
-        // Returns a JSON string: {descriptor, yaw} for exactly one clear face, otherwise {problem}.
-        // yaw is the nose position across the jaw line (~0.5 facing the camera, moves toward 0/1 when turned).
-        analyze: async function (dataUrl) {
+        // Fast per-frame check on the live camera <video> (no JPEG round trip). Returns a JSON string:
+        // {problem} for no / several / tiny faces, else {yaw} (nose position across the jaw: ~0.5 facing the camera)
+        // plus {descriptor} when the frame matches `mode` ('frontal' | 'turned') - the heavy recognition net runs only then.
+        liveFrame: async function (mode) {
           await ensureModels();
-          const img = await loadImage(dataUrl);
-          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.6 });
-          const faces = await faceapi.detectAllFaces(img, opts).withFaceLandmarks().withFaceDescriptors();
+          const video = findVideo();
+          if (!video) return JSON.stringify({ problem: 'novideo' });
+          const fast = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.6 });
+          const faces = await faceapi.detectAllFaces(video, fast).withFaceLandmarks();
           if (faces.length === 0) return JSON.stringify({ problem: 'none' });
           if (faces.length > 1) return JSON.stringify({ problem: 'multiple' });
-          const f = faces[0];
-          if (f.detection.box.width / img.width < 0.2) return JSON.stringify({ problem: 'small' });
-          const pts = f.landmarks.positions;
+          if (faces[0].detection.box.width / video.videoWidth < 0.2) return JSON.stringify({ problem: 'small' });
+          const pts = faces[0].landmarks.positions;
           const yaw = (pts[30].x - pts[0].x) / (pts[16].x - pts[0].x);
-          return JSON.stringify({ descriptor: Array.from(f.descriptor), yaw });
+          const off = Math.abs(yaw - 0.5);
+          const wanted = (mode === 'frontal' && off <= 0.09) || (mode === 'turned' && off >= 0.12);
+          if (!wanted) return JSON.stringify({ yaw });
+          const full = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.6 });
+          const withId = await faceapi.detectAllFaces(video, full).withFaceLandmarks().withFaceDescriptors();
+          if (withId.length !== 1) return JSON.stringify({ yaw });
+          return JSON.stringify({ yaw, descriptor: Array.from(withId[0].descriptor) });
         },
       };
     })();
