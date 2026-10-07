@@ -123,6 +123,7 @@ document.getElementById('logoutBtn').addEventListener('click', logout);
 
 const TABS = [
   ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'], ['audit', 'บันทึกการตรวจ'], ['kiosks', 'ตู้เช็คอิน'],
+  ['quests', 'ภารกิจ'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
 ];
 
 function renderTabs() {
@@ -193,10 +194,132 @@ async function renderPanel() {
         el('p', { class: 'muted' }, 'ใช้รหัสตู้และคีย์นี้ตั้งค่าที่เครื่อง Kiosk (ห้ามเผยแพร่คีย์) QR หน้าตู้คือ TRVKIOSK|รหัสตู้'),
         table(['รหัสตู้', 'สถานที่', 'คีย์ตู้', 'ออนไลน์ล่าสุด'],
           kiosks.map((k) => [k.kiosk_code, `${k.location_name} (${k.province})`, k.kiosk_key, k.last_seen_at ? fmtDate(k.last_seen_at) : 'ยังไม่เคย'])));
+    } else if (state.tab === 'quests') {
+      await renderQuests(panel);
+    } else if (state.tab === 'packs') {
+      await renderPacks(panel);
+    } else if (state.tab === 'intents') {
+      const { intents } = await api('/admin/order-intents');
+      panel.replaceChildren(el('p', { class: 'muted' }, 'จำนวนผู้ที่กด "สั่งซื้อการ์ดจริง" ในแต่ละการ์ด (ใช้ประเมินความต้องการก่อนผลิตจริง)'),
+        table(['การ์ด', 'ระดับ', 'ผู้สนใจ', 'ล่าสุด'], intents.map((i) => [i.name, i.rarity, String(i.interested), fmtDate(i.last_at)])));
     } else if (state.tab === 'locations') {
       await renderLocations(panel);
     }
   } catch (e) { panel.replaceChildren(el('p', { class: 'err' }, e.message)); }
+}
+
+
+// ---- quest review ---------------------------------------------------------------------------------------------------
+const isJpegDataUrl = (u) => /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(u || '');
+
+async function renderQuests(panel) {
+  const filter = state.questFilter || 'pending';
+  const { quests } = await api('/admin/quests?status=' + filter);
+  const tabs = el('div', { class: 'row', style: 'gap:6px;margin-bottom:10px' }, [['pending', 'รออนุมัติ'], ['approved', 'อนุมัติแล้ว'], ['rejected', 'ไม่อนุมัติ'], ['closed', 'ปิดแล้ว']].map(([v, label]) =>
+    el('button', { class: v === filter ? '' : 'small', onclick: () => { state.questFilter = v; renderPanel(); } }, label)));
+  const cards = quests.map((q) => {
+    const images = el('div', { class: 'muted' }, 'กำลังโหลดภาพ...');
+    api('/admin/quests/' + encodeURIComponent(q.quest_id) + '/images').then((im) => {
+      const parts = [];
+      if (isJpegDataUrl(im.cover_image)) parts.push(el('img', { src: im.cover_image, alt: 'cover', style: 'height:150px;border-radius:8px;border:1px solid var(--line)' }));
+      if (isJpegDataUrl(im.card_image)) parts.push(el('img', { src: im.card_image, alt: 'card', style: 'height:150px;border-radius:8px;border:1px solid var(--line)' }));
+      images.replaceChildren(...parts);
+      images.className = 'row';
+      images.style.gap = '10px';
+    }).catch((e) => { images.textContent = e.message; });
+    const c = q.card || {};
+    const period = q.permanent ? 'ภารกิจถาวร' : `${q.start_date} ถึง ${q.end_date}`;
+    const actions = [];
+    if (q.status === 'pending') {
+      actions.push(el('button', { onclick: async () => { try { await api('/admin/quests/' + q.quest_id + '/approve', { method: 'POST', body: '{}' }); renderPanel(); } catch (e) { alert(e.message); } } }, 'อนุมัติ'));
+      actions.push(el('button', { class: 'small', onclick: async () => {
+        const reason = prompt('เหตุผลที่ไม่อนุมัติ (จะแจ้งกลับไปยังผู้สร้าง):');
+        if (!reason) return;
+        try { await api('/admin/quests/' + q.quest_id + '/reject', { method: 'POST', body: JSON.stringify({ reason }) }); renderPanel(); } catch (e) { alert(e.message); }
+      } }, 'ไม่อนุมัติ'));
+    } else if (q.status === 'approved') {
+      actions.push(el('button', { class: 'small', onclick: async () => {
+        if (!confirm('ปิดภารกิจนี้ใช่หรือไม่? ผู้ใช้จะสแกนรับการ์ดเพิ่มไม่ได้')) return;
+        try { await api('/admin/quests/' + q.quest_id + '/close', { method: 'POST', body: '{}' }); renderPanel(); } catch (e) { alert(e.message); }
+      } }, 'ปิดภารกิจ'));
+    }
+    return el('div', { class: 'panel', style: 'margin-bottom:12px' },
+      el('h3', { style: 'margin:0 0 4px' }, q.title),
+      el('p', { class: 'muted', style: 'margin:0 0 8px' }, `โดย @${q.creator_username} · ${q.location_name} (${q.province}) · ${period} · ส่งเมื่อ ${fmtDate(q.created_at)}`),
+      el('p', { style: 'white-space:pre-wrap;margin:0 0 8px' }, q.description),
+      el('p', { style: 'margin:0 0 8px' }, `การ์ด: ${c.name} · ${c.rarity} · แจกสูงสุด ${c.mint_limit} ใบ (แจกไปแล้ว ${c.minted_count}) ${c.lore ? '· ' + c.lore : ''}`),
+      q.reject_reason ? el('p', { class: 'err' }, 'เหตุผลที่ไม่อนุมัติ: ' + q.reject_reason) : '',
+      images, el('div', { class: 'row', style: 'gap:8px;margin-top:10px' }, actions));
+  });
+  panel.replaceChildren(tabs, ...(cards.length ? cards : [el('p', { class: 'muted' }, 'ไม่มีรายการ')]));
+}
+
+// ---- physical blind-pack cards -----------------------------------------------------------------------------------------
+function pickJpeg(maxSide) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (!file) return reject(new Error('ไม่ได้เลือกไฟล์'));
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้'));
+      img.src = URL.createObjectURL(file);
+    };
+    input.click();
+  });
+}
+
+async function renderPacks(panel) {
+  const { packs } = await api('/admin/blind-packs');
+  let artwork = null;
+  const preview = el('div', { class: 'muted' }, 'ยังไม่ได้เลือกภาพ');
+  const f = (id, label, input) => el('div', {}, el('label', { for: id }, label), input);
+  const name = el('input', { id: 'bp_name', maxlength: '60' });
+  const lore = el('textarea', { id: 'bp_lore', rows: '2', maxlength: '500' });
+  const count = el('input', { id: 'bp_count', type: 'number', min: '1', max: '5000', value: '100' });
+  const rarity = el('select', { id: 'bp_rarity' }, ['normal', 'rare', 'special'].map((r) => el('option', { value: r }, r)));
+  const msg = el('p', { class: 'muted' }, '');
+  const create = el('button', { onclick: async () => {
+    try {
+      const r = await api('/admin/blind-packs', { method: 'POST', body: JSON.stringify({ name: name.value, lore: lore.value, rarity: rarity.value, count: Number(count.value), card_image: artwork }) });
+      msg.className = 'ok'; msg.textContent = `สร้างแล้ว ${r.count} ใบ`;
+      renderPanel();
+    } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+  } }, 'สร้างชุดการ์ด');
+  const form = el('div', { class: 'panel' },
+    el('h3', { style: 'margin-top:0' }, 'สร้างชุดการ์ดสุ่ม (ของจริง) พร้อมรหัสเปิดใช้งาน'),
+    el('p', { class: 'muted' }, 'ระบบสร้างการ์ดทุกใบเป็นสถานะ Unclaimed พร้อม QR เฉพาะใบ ดาวน์โหลดรหัสไปพิมพ์หลังการ์ดจริง'),
+    f('bp_name', 'ชื่อการ์ด', name), f('bp_rarity', 'ระดับความหายาก', rarity), f('bp_count', 'จำนวนที่ผลิต', count), f('bp_lore', 'เรื่องราวการ์ด', lore),
+    el('div', {}, el('label', {}, 'ภาพ Artwork'), el('button', { class: 'small', onclick: async () => {
+      try {
+        artwork = await pickJpeg(900);
+        preview.replaceChildren(el('img', { src: artwork, alt: 'artwork', style: 'height:140px;border-radius:8px' }));
+      } catch (e) { preview.textContent = e.message; }
+    } }, 'เลือกภาพ'), preview),
+    el('p', {}, create), msg);
+
+  const list = table(['ชื่อ', 'ระดับ', 'ผลิต', 'เปิดใช้แล้ว', ''], packs.map((p) => [p.name, p.rarity, String(p.mint_limit), String(p.claimed),
+    el('button', { class: 'small', onclick: async () => {
+      try {
+        const { codes } = await api('/admin/blind-packs/' + p.template_id + '/codes');
+        const csv = 'serial,qr_payload,status\n' + codes.map((c) => `${c.serial},${c.payload},${c.status}`).join('\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = 'activation-codes-' + p.name.replace(/[^\w\u0E00-\u0E7F-]+/g, '_') + '.csv';
+        a.click();
+      } catch (e) { alert(e.message); }
+    } }, 'ดาวน์โหลดรหัส (CSV)')]));
+  panel.replaceChildren(form, el('div', { class: 'panel' }, list));
 }
 
 async function showFacePhoto(box, c) {
