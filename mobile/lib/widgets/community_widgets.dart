@@ -94,7 +94,7 @@ class PostImages extends StatelessWidget {
     final n = imageIds.length;
     if (n == 0) return const SizedBox.shrink();
     if (n == 1) return AspectRatio(aspectRatio: 4 / 3, child: _tile(context, 0));
-    if (n == 2) return SizedBox(height: 180, child: Row(children: [Expanded(child: _tile(context, 0)), const SizedBox(width: 4), Expanded(child: _tile(context, 1))]));
+    if (n == 2) return SizedBox(height: 180, child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: _tile(context, 0)), const SizedBox(width: 4), Expanded(child: _tile(context, 1))]));
     final shown = n > 6 ? 6 : n;
     return GridView.count(
       shrinkWrap: true,

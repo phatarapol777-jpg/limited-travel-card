@@ -15,7 +15,10 @@ import 'trade_composer_screen.dart';
 /// and two views: their posts (timeline) and their card showcase.
 class CommunityProfileScreen extends StatefulWidget {
   final String username;
-  const CommunityProfileScreen({super.key, required this.username});
+
+  /// Open on the card showcase (where the trade button is) instead of the posts.
+  final bool initialShowCards;
+  const CommunityProfileScreen({super.key, required this.username, this.initialShowCards = false});
 
   @override
   State<CommunityProfileScreen> createState() => _CommunityProfileScreenState();
@@ -31,6 +34,7 @@ class _CommunityProfileScreenState extends State<CommunityProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _showCards = widget.initialShowCards;
     _load();
   }
 

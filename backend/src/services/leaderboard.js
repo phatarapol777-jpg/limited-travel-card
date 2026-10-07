@@ -83,6 +83,8 @@ function finalizePastMonths(now = Date.now()) {
     m += 1;
     if (m > 12) { m = 1; y += 1; }
   }
+  // this runs inside GET requests, which do not schedule a backup on their own: make sure the closed month is saved
+  if (finished.length) require('./backup').markDirty();
   return finished;
 }
 
