@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../db');
 const { newId, authMiddleware } = require('../util');
 const bookingCom = require('../services/bookingCom');
+const transport = require('../services/transportService');
+const { bangkokToday } = require('../services/questService');
 
 const router = express.Router();
 
@@ -156,6 +158,79 @@ router.get('/requests', authMiddleware, (req, res) => {
     return { ...rest, photo_url: h.main_photo_url || null, address: [h.address, h.district, h.city_trans].filter(Boolean).join(', ') || null };
   });
   res.json({ requests: enriched });
+});
+
+// ---- flights and rental cars -----------------------------------------------------------------------------------------------------
+const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+const addDays = (ymd, n) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const AIRPORT_CODE = /^[A-Z]{3}(\.(AIRPORT|CITY))?$/;
+const upstream = (res, err) => {
+  const m = String(err && err.message || '');
+  if (/429|Too many/i.test(m)) return res.status(503).json({ error: 'บริการค้นหาถูกใช้งานหนาแน่น กรุณารอสักครู่แล้วลองใหม่' });
+  res.status(502).json({ error: 'ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง' });
+};
+
+router.get('/airports', authMiddleware, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2 || q.length > 40) return res.json({ airports: [] });
+  try {
+    res.json({ airports: await transport.searchAirports(q) });
+  } catch (err) {
+    upstream(res, err);
+  }
+});
+
+router.get('/flights', authMiddleware, async (req, res) => {
+  const q = req.query;
+  const today = bangkokToday();
+  if (!AIRPORT_CODE.test(String(q.from)) || !AIRPORT_CODE.test(String(q.to))) return res.status(400).json({ error: 'เลือกต้นทางและปลายทาง' });
+  if (q.from === q.to) return res.status(400).json({ error: 'ต้นทางและปลายทางต้องไม่ใช่ที่เดียวกัน' });
+  if (!isDate(q.date) || q.date < today || q.date > addDays(today, 365)) return res.status(400).json({ error: 'วันเดินทางไม่ถูกต้อง (ภายใน 1 ปีข้างหน้า)' });
+  if (q.return_date && (!isDate(q.return_date) || q.return_date < q.date || q.return_date > addDays(today, 365))) return res.status(400).json({ error: 'วันเดินทางกลับต้องไม่ก่อนวันไป' });
+  const adults = parseInt(q.adults, 10) || 1;
+  if (adults < 1 || adults > 9) return res.status(400).json({ error: 'จำนวนผู้โดยสารต้อง 1-9 คน' });
+  try {
+    res.json(await transport.searchFlights({ from: q.from, to: q.to, date: q.date, returnDate: q.return_date || null, adults, cabin: q.cabin, order: q.order }));
+  } catch (err) {
+    upstream(res, err);
+  }
+});
+
+router.get('/cars', authMiddleware, async (req, res) => {
+  const q = req.query;
+  const today = bangkokToday();
+  const loc = db.prepare('SELECT latitude, longitude FROM locations WHERE location_id = ?').get(String(q.location_id || ''));
+  if (!loc) return res.status(404).json({ error: 'ไม่พบสถานที่' });
+  if (!isDate(q.pick_up) || q.pick_up < today || q.pick_up > addDays(today, 365)) return res.status(400).json({ error: 'วันรับรถไม่ถูกต้อง (ภายใน 1 ปีข้างหน้า)' });
+  if (!isDate(q.drop_off) || q.drop_off <= q.pick_up || q.drop_off > addDays(q.pick_up, 30)) return res.status(400).json({ error: 'วันคืนรถต้องหลังวันรับรถ และเช่าได้ไม่เกิน 30 วัน' });
+  try {
+    res.json(await transport.searchCars({ latitude: loc.latitude, longitude: loc.longitude, pickUp: q.pick_up, dropOff: q.drop_off, sort: q.sort }));
+  } catch (err) {
+    upstream(res, err);
+  }
+});
+
+// The traveler picks one result and asks to book it. Like the hotel requests, it is only recorded here for an admin to follow up.
+router.post('/transport/request', authMiddleware, (req, res) => {
+  const b = req.body || {};
+  if (!['flight', 'car'].includes(b.kind)) return res.status(400).json({ error: 'ประเภทต้องเป็น flight หรือ car' });
+  const title = String(b.title || '').trim();
+  if (!title || title.length > 200) return res.status(400).json({ error: 'ข้อมูลที่เลือกไม่ครบ' });
+  const summary = JSON.stringify(b.summary && typeof b.summary === 'object' ? b.summary : {});
+  if (summary.length > 6000) return res.status(400).json({ error: 'ข้อมูลที่เลือกใหญ่เกินไป' });
+  const price = b.price === null || b.price === undefined ? null : Number(b.price);
+  if (price !== null && (!Number.isFinite(price) || price < 0 || price > 10_000_000)) return res.status(400).json({ error: 'ราคาไม่ถูกต้อง' });
+  const recent = db.prepare('SELECT COUNT(*) AS c FROM transport_requests WHERE user_id = ? AND requested_at >= ?').get(req.user.user_id, new Date(Date.now() - 86400000).toISOString()).c;
+  if (recent >= 20) return res.status(429).json({ error: 'ส่งคำขอได้สูงสุด 20 รายการใน 24 ชั่วโมง' });
+  const id = newId('trq');
+  db.prepare('INSERT INTO transport_requests (request_id, user_id, kind, title, summary_json, price_amount, price_currency, status, requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, req.user.user_id, b.kind, title, summary, price, String(b.currency || 'THB').slice(0, 3), 'requested', new Date().toISOString());
+  res.status(201).json({ request_id: id, status: 'requested' });
+});
+
+router.get('/transport/requests', authMiddleware, (req, res) => {
+  const rows = db.prepare('SELECT request_id, kind, title, summary_json, price_amount, price_currency, status, requested_at FROM transport_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 100').all(req.user.user_id);
+  res.json({ requests: rows.map(({ summary_json, ...r }) => ({ ...r, summary: JSON.parse(summary_json) })) });
 });
 
 module.exports = router;

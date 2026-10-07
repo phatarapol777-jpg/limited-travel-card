@@ -11,6 +11,7 @@ import '../widgets/place_detail.dart';
 import '../widgets/map_layers.dart';
 import '../widgets/shop_detail.dart';
 import 'booking_screen.dart';
+import 'transport_screens.dart';
 
 class MapMissionsScreen extends StatefulWidget {
   const MapMissionsScreen({super.key});
@@ -356,17 +357,19 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           children: [
                             _ExternalServiceCard(
-                              label: 'Booking.com',
+                              label: 'จองที่พัก',
                               icon: Icons.hotel,
                               onTap: _pickLocationForBooking,
                             ),
-                            const _ExternalServiceCard(
-                              label: 'Booking.com Flights',
+                            _ExternalServiceCard(
+                              label: 'จองเที่ยวบิน',
                               icon: Icons.flight,
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FlightsScreen())),
                             ),
-                            const _ExternalServiceCard(
-                              label: 'HRVI Booking',
+                            _ExternalServiceCard(
+                              label: 'เช่ารถ',
                               icon: Icons.directions_car,
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CarsScreen())),
                             ),
                           ],
                         ),

@@ -441,6 +441,22 @@ CREATE INDEX IF NOT EXISTS idx_privileges_template ON merchant_privileges(templa
 CREATE INDEX IF NOT EXISTS idx_privileges_merchant ON merchant_privileges(merchant_id);
 `);
 
+// Flight and rental-car requests (the search results come live from the Booking.com wrapper, so the choice is stored as a snapshot).
+db.exec(`
+CREATE TABLE IF NOT EXISTS transport_requests (
+  request_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary_json TEXT NOT NULL,
+  price_amount REAL,
+  price_currency TEXT,
+  status TEXT NOT NULL,
+  requested_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_transport_requests_user ON transport_requests(user_id, requested_at);
+`);
+
 // ---- community: public profiles, posts with pictures and place tags, reactions, follows, monthly leaderboard ------------------
 addColumns('users', { display_name: 'TEXT', avatar: 'TEXT', cover: 'TEXT', bio: 'TEXT', selected_badge_id: 'TEXT', is_badge_visible: 'INTEGER NOT NULL DEFAULT 1', profile_rev: 'INTEGER NOT NULL DEFAULT 0' });
 addColumns('community_posts', { updated_at: 'TEXT', location_id: 'TEXT' });

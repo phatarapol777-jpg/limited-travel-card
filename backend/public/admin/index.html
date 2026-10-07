@@ -183,18 +183,23 @@ async function renderPanel() {
       panel.replaceChildren(table(['Username', 'ชื่อ', 'อีเมล', 'การ์ด', 'เช็คอิน', 'สมัครเมื่อ'],
         users.map((u) => [u.username, `${u.first_name} ${u.last_name}`, u.email, String(u.cards), String(u.checkins), fmtDate(u.created_at)])));
     } else if (state.tab === 'bookings') {
-      const { requests } = await api('/admin/booking-requests');
-      const statusSelect = (r) => {
+      const [{ requests }, { requests: transport }] = await Promise.all([api('/admin/booking-requests'), api('/admin/transport-requests')]);
+      const statusSelect = (r, path = '/admin/booking-requests/' + r.booking_request_id + '/status') => {
         const sel = el('select', { onchange: async () => {
-          try { await api('/admin/booking-requests/' + r.booking_request_id + '/status', { method: 'PUT', body: JSON.stringify({ status: sel.value }) }); }
+          try { await api(path, { method: 'PUT', body: JSON.stringify({ status: sel.value }) }); }
           catch (e) { alert(e.message); renderPanel(); }
         } }, [['requested', 'รอดำเนินการ'], ['confirmed', 'ยืนยันแล้ว'], ['rejected', 'ปฏิเสธ']].map(([v, label]) => {
           const o = el('option', { value: v }, label); if (r.status === v) o.selected = true; return o;
         }));
         return sel;
       };
-      panel.replaceChildren(table(['โรงแรม', 'ผู้เข้าพัก', 'ผู้ขอ', 'เข้าพัก', 'ราคา', 'สถานะ', 'เวลาขอ'],
-        requests.map((r) => [r.hotel_name, r.guest_name, r.username, `${r.check_in_date} → ${r.check_out_date}`, `${Math.round(r.price_amount || 0)} ${r.price_currency || ''}`, statusSelect(r), fmtDate(r.requested_at)])));
+      panel.replaceChildren(
+        el('h3', { style: 'margin:0 0 8px' }, 'ที่พัก'),
+        table(['โรงแรม', 'ผู้เข้าพัก', 'ผู้ขอ', 'เข้าพัก', 'ราคา', 'สถานะ', 'เวลาขอ'],
+          requests.map((r) => [r.hotel_name, r.guest_name, r.username, `${r.check_in_date} → ${r.check_out_date}`, `${Math.round(r.price_amount || 0)} ${r.price_currency || ''}`, statusSelect(r), fmtDate(r.requested_at)])),
+        el('h3', { style: 'margin:22px 0 8px' }, 'เที่ยวบินและรถเช่า'),
+        table(['ประเภท', 'รายการที่เลือก', 'ผู้ขอ', 'ราคา', 'สถานะ', 'เวลาขอ'],
+          transport.map((r) => [r.kind === 'flight' ? 'เที่ยวบิน' : 'รถเช่า', r.title, r.username, r.price_amount == null ? '-' : `${Math.round(r.price_amount)} ${r.price_currency || ''}`, statusSelect(r, '/admin/transport-requests/' + r.request_id + '/status'), fmtDate(r.requested_at)])));
     } else if (state.tab === 'checkins') {
       const { checkins } = await api('/admin/checkins');
       const photoBox = el('div', { style: 'margin-top:14px' });

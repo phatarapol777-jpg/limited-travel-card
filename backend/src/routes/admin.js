@@ -583,6 +583,21 @@ router.get('/kiosk-sessions/:id/photo', (req, res) => {
   res.json({ photo: row.face_photo });
 });
 
+// Flight and rental-car requests, next to the hotel ones.
+router.get('/transport-requests', (req, res) => {
+  const rows = db.prepare(`SELECT t.request_id, t.kind, t.title, t.summary_json, t.price_amount, t.price_currency, t.status, t.requested_at, u.username
+    FROM transport_requests t JOIN users u ON u.user_id = t.user_id ORDER BY t.requested_at DESC LIMIT 200`).all();
+  res.json({ requests: rows.map(({ summary_json, ...r }) => ({ ...r, summary: JSON.parse(summary_json) })) });
+});
+
+router.put('/transport-requests/:id/status', (req, res) => {
+  const { status } = req.body || {};
+  if (!['requested', 'confirmed', 'rejected'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
+  const result = db.prepare('UPDATE transport_requests SET status = ? WHERE request_id = ?').run(status, req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'ไม่พบคำขอนี้' });
+  res.json({ status });
+});
+
 router.put('/booking-requests/:id/status', (req, res) => {
   const { status } = req.body || {};
   if (!['requested', 'confirmed', 'rejected'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });

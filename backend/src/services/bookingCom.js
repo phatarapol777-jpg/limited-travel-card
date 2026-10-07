@@ -1,4 +1,4 @@
-const BASE_URL = 'https://booking-com.p.rapidapi.com';
+const BASE_URL = process.env.BOOKING_BASE_URL || 'https://booking-com.p.rapidapi.com'; // overridable so tests can use a fake upstream
 const HOST = 'booking-com.p.rapidapi.com';
 
 const destIdCache = new Map();
@@ -102,4 +102,4 @@ async function getHotelReviews(hotelId) {
   }));
 }
 
-module.exports = { searchHotels, getHotelPhotos, getHotelReviews };
+module.exports = { searchHotels, getHotelPhotos, getHotelReviews, bookingGet };
