@@ -33,6 +33,7 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
   <script>
     // Browser-side face descriptor helper used by registration and the check-in kiosk.
     // Returns a JSON string of 128 numbers, or null when no face is found.
@@ -64,18 +65,26 @@
         }
         return ready;
       }
-      // The camera plugin's <video> may sit inside shadow roots, so search them too.
-      function findVideo() {
+      // The camera plugin's <video> elements may sit inside shadow roots. Only videos with a live camera track count
+      // (a closed camera leaves a dead 2x2 video behind); `label` picks one camera when several are open.
+      function findVideo(label) {
         const roots = [document];
-        let best = null;
+        const live = [];
         while (roots.length) {
           const root = roots.pop();
           root.querySelectorAll('*').forEach((el) => {
-            if (el.tagName === 'VIDEO' && el.srcObject && el.readyState >= 2 && el.videoWidth > 0) best = el;
+            if (el.tagName === 'VIDEO' && el.srcObject && el.srcObject.getVideoTracks && el.readyState >= 2 && el.videoWidth >= 64) {
+              const track = el.srcObject.getVideoTracks()[0];
+              if (track && track.readyState === 'live') live.push({ el, label: track.label });
+            }
             if (el.shadowRoot) roots.push(el.shadowRoot);
           });
         }
-        return best;
+        if (label) {
+          const match = live.find((v) => v.label === label);
+          if (match) return match.el;
+        }
+        return live.length ? live[live.length - 1].el : null;
       }
       function loadImage(dataUrl) {
         return new Promise((resolve, reject) => {
@@ -85,14 +94,30 @@
           img.src = dataUrl;
         });
       }
+      let qrCanvas = null;
       return {
         preload: () => ensureModels().then(() => true).catch(() => false),
+        // Decodes a QR code from the current frame of the live camera ('' when none is visible).
+        readQr: function (label) {
+          const video = findVideo(label || null);
+          if (!video || !window.jsQR) return '';
+          const scale = Math.min(1, 960 / video.videoWidth);
+          const w = Math.round(video.videoWidth * scale);
+          const h = Math.round(video.videoHeight * scale);
+          if (!qrCanvas) qrCanvas = document.createElement('canvas');
+          qrCanvas.width = w;
+          qrCanvas.height = h;
+          const ctx = qrCanvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(video, 0, 0, w, h);
+          const code = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+          return code ? code.data : '';
+        },
         // Fast per-frame check on the live camera <video> (no JPEG round trip). Returns a JSON string:
         // {problem} for no / several / tiny faces, else {yaw} (nose position across the jaw: ~0.5 facing the camera)
         // plus {descriptor} when the frame matches `mode` ('frontal' | 'turned') - the heavy recognition net runs only then.
-        liveFrame: async function (mode) {
+        liveFrame: async function (mode, label) {
           await ensureModels();
-          const video = findVideo();
+          const video = findVideo(label || null);
           if (!video) return JSON.stringify({ problem: 'novideo' });
           const fast = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.6 });
           const faces = await faceapi.detectAllFaces(video, fast).withFaceLandmarks();
@@ -111,6 +136,17 @@
         },
       };
     })();
+
+    // Current GPS position as a JSON string, or '' when unavailable or denied.
+    window.travelGeo = {
+      get: () => new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve('');
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve(JSON.stringify({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy })),
+          () => resolve(''),
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
+      }),
+    };
   </script>
   <title>Limited Travel Card</title>
   <link rel="manifest" href="manifest.json">

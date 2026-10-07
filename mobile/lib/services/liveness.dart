@@ -31,11 +31,14 @@ double _distance(List<double> a, List<double> b) {
 /// Active liveness check: the person must face the camera and then turn their head to the side,
 /// and both frames must show the same single face. A still photo or a non-face cannot do this.
 /// Frames are read straight from the live video, so each check takes a fraction of a second.
-/// Returns a photo of the facing-camera frame and its descriptor. [onPrompt] receives instructions for the user.
+/// Returns a photo of the facing-camera frame and its descriptor. [onPrompt] receives instructions for the user;
+/// [cameraLabel] picks the camera when several are open and [tick] runs once per frame (the kiosk reads the phone's QR there).
 Future<LivenessResult> runLivenessCheck(
   CameraController controller, {
   required void Function(String message) onPrompt,
   required bool Function() isActive,
+  String? cameraLabel,
+  Future<void> Function()? tick,
 }) async {
   Uint8List? photo;
   List<double>? frontal;
@@ -45,7 +48,8 @@ Future<LivenessResult> runLivenessCheck(
   while (frontal == null) {
     if (!isActive()) throw LivenessException('ยกเลิก');
     if (DateTime.now().isAfter(deadline)) throw LivenessException('ไม่พบใบหน้าที่ชัดเจน กรุณาลองใหม่');
-    final a = await analyzeLiveFrame('frontal');
+    await tick?.call();
+    final a = await analyzeLiveFrame('frontal', label: cameraLabel);
     if (a.problem != null) {
       onPrompt(a.problemMessage);
     } else if (a.descriptor != null) {
@@ -63,7 +67,8 @@ Future<LivenessResult> runLivenessCheck(
     if (DateTime.now().isAfter(deadline)) {
       throw LivenessException('ไม่พบการหันหน้า กรุณาลองใหม่ (ต้องเป็นใบหน้าจริง ไม่ใช่รูปภาพ)');
     }
-    final a = await analyzeLiveFrame('turned');
+    await tick?.call();
+    final a = await analyzeLiveFrame('turned', label: cameraLabel);
     if (a.problem != null) {
       onPrompt(a.problemMessage);
       continue;

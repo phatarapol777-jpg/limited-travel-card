@@ -21,10 +21,11 @@ class ApiException implements Exception {
 class ApiClient {
   String? token;
 
-  Map<String, String> _headers({bool json = true}) {
+  Map<String, String> _headers({bool json = true, bool auth = true, Map<String, String>? extra}) {
     final headers = <String, String>{};
     if (json) headers['Content-Type'] = 'application/json';
-    if (token != null) headers['Authorization'] = 'Bearer $token';
+    if (auth && token != null) headers['Authorization'] = 'Bearer $token';
+    if (extra != null) headers.addAll(extra);
     return headers;
   }
 
@@ -48,8 +49,9 @@ class ApiClient {
     return _decode(res);
   }
 
-  Future<dynamic> post(String path, [Map<String, dynamic>? body]) async {
-    final res = await http.post(_u(path), headers: _headers(), body: jsonEncode(body ?? {}));
+  /// [headers] adds request headers; [auth] false omits the traveler's token (used by the kiosk, which signs in with its own key).
+  Future<dynamic> post(String path, [Map<String, dynamic>? body, Map<String, String>? headers, bool auth = true]) async {
+    final res = await http.post(_u(path), headers: _headers(auth: auth, extra: headers), body: jsonEncode(body ?? {}));
     return _decode(res);
   }
 

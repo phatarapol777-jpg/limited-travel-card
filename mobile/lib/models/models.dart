@@ -319,6 +319,7 @@ class HotelReview {
 
 class CheckinKiosk {
   final String kioskId;
+  final String kioskCode;
   final String locationId;
   final String locationName;
   final String province;
@@ -326,6 +327,7 @@ class CheckinKiosk {
 
   CheckinKiosk({
     required this.kioskId,
+    required this.kioskCode,
     required this.locationId,
     required this.locationName,
     required this.province,
@@ -334,6 +336,7 @@ class CheckinKiosk {
 
   factory CheckinKiosk.fromJson(Map<String, dynamic> j) => CheckinKiosk(
         kioskId: j['kiosk_id'],
+        kioskCode: j['kiosk_code'] ?? '',
         locationId: j['location_id'],
         locationName: j['location_name'],
         province: j['province'],
