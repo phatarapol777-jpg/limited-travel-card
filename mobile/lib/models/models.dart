@@ -9,6 +9,7 @@ class AppUser {
   final String? phone;
   final bool isAdmin;
   final bool hasFace;
+  final bool usingDefaultPassword;
 
   AppUser({
     required this.userId,
@@ -19,6 +20,7 @@ class AppUser {
     this.phone,
     this.isAdmin = false,
     this.hasFace = false,
+    this.usingDefaultPassword = false,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -30,6 +32,7 @@ class AppUser {
         phone: j['phone'],
         isAdmin: j['is_admin'] == 1 || j['is_admin'] == true,
         hasFace: j['has_face'] == true,
+        usingDefaultPassword: j['using_default_password'] == true,
       );
 }
 

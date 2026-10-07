@@ -88,9 +88,24 @@ async function api(path, options = {}) {
 }
 
 function logout() {
+  if (state.token) fetch(API + '/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + state.token } }).catch(() => {});
   sessionStorage.removeItem('adminToken');
   state.token = null;
   showView();
+}
+
+// A warning while the admin account still has the password the system was installed with.
+async function refreshBanner() {
+  document.getElementById('pwBanner')?.remove();
+  try {
+    const { user } = await api('/auth/me');
+    if (!user.using_default_password) return;
+    const banner = el('div', { id: 'pwBanner', style: 'background:#fff3cd;border:1px solid #e0b100;color:#5c4400;padding:12px 16px;border-radius:10px;margin:0 0 14px' },
+      el('b', {}, 'ยังใช้รหัสผ่านเริ่มต้นของแอดมิน (admin1234) '),
+      'ใครเดาได้ก็เข้าดูข้อมูลผู้ใช้และรูปเช็คอินได้ ',
+      el('button', { class: 'small', onclick: () => { state.tab = 'settings'; renderTabs(); renderPanel(); } }, 'เปลี่ยนรหัสผ่านตอนนี้'));
+    document.querySelector('main').prepend(banner);
+  } catch (e) { /* api() already handled a rejected session */ }
 }
 
 function showView() {
@@ -123,7 +138,7 @@ document.getElementById('logoutBtn').addEventListener('click', logout);
 
 const TABS = [
   ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'], ['audit', 'บันทึกการตรวจ'], ['kiosks', 'ตู้เช็คอิน'],
-  ['quests', 'ภารกิจ'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
+  ['settings', 'ตั้งค่าระบบ'], ['quests', 'ภารกิจ'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
 ];
 
 function renderTabs() {
@@ -133,6 +148,7 @@ function renderTabs() {
 }
 
 async function loadAll() {
+  refreshBanner();
   renderTabs();
   try {
     const s = await api('/admin/stats');
@@ -155,7 +171,12 @@ async function renderPanel() {
   try {
     if (state.tab === 'overview') {
       const s = state.stats || (await api('/admin/stats'));
-      panel.replaceChildren(el('h3', {}, 'สถานที่ที่มีคนเช็คอินมากที่สุด'),
+      const backup = await api('/admin/backup-status').catch(() => null);
+      const backupLine = !backup ? '' : !backup.enabled ? 'การสำรองข้อมูลปิดอยู่' : backup.blocked
+        ? 'สำรองข้อมูลไม่ทำงาน: กู้ข้อมูลไม่สำเร็จตอนเริ่มระบบ (ระบบไม่อัปโหลดทับของเดิม)'
+        : `สำรองข้อมูลล่าสุด: ${backup.lastSuccessAt ? fmtDate(backup.lastSuccessAt) + ` (${backup.lastSizeKb} KB)` : 'ยังไม่เคยสำเร็จหลังเริ่มระบบ'}${backup.pending_changes ? ' · มีการเปลี่ยนแปลงรอสำรอง' : ''}${backup.lastError ? ' · ครั้งล่าสุดที่ผิดพลาด: ' + backup.lastError : ''}`;
+      panel.replaceChildren(backupLine ? el('p', { class: backup && backup.lastError && !backup.lastSuccessAt ? 'err' : 'muted' }, backupLine) : '',
+        el('h3', {}, 'สถานที่ที่มีคนเช็คอินมากที่สุด'),
         table(['สถานที่', 'จังหวัด', 'เช็คอิน'], s.top_locations.map((l) => [l.name, l.province, String(l.checkins)])));
     } else if (state.tab === 'users') {
       const { users } = await api('/admin/users');
@@ -194,6 +215,8 @@ async function renderPanel() {
         el('p', { class: 'muted' }, 'ใช้รหัสตู้และคีย์นี้ตั้งค่าที่เครื่อง Kiosk (ห้ามเผยแพร่คีย์) QR หน้าตู้คือ TRVKIOSK|รหัสตู้'),
         table(['รหัสตู้', 'สถานที่', 'คีย์ตู้', 'ออนไลน์ล่าสุด'],
           kiosks.map((k) => [k.kiosk_code, `${k.location_name} (${k.province})`, k.kiosk_key, k.last_seen_at ? fmtDate(k.last_seen_at) : 'ยังไม่เคย'])));
+    } else if (state.tab === 'settings') {
+      await renderSettings(panel);
     } else if (state.tab === 'quests') {
       await renderQuests(panel);
     } else if (state.tab === 'packs') {
@@ -208,6 +231,69 @@ async function renderPanel() {
   } catch (e) { panel.replaceChildren(el('p', { class: 'err' }, e.message)); }
 }
 
+
+
+// ---- system settings, password, backup ----------------------------------------------------------------------------
+async function renderSettings(panel) {
+  const [{ settings }, backup] = await Promise.all([api('/admin/settings'), api('/admin/backup-status')]);
+
+  const pwMsg = el('p', { class: 'muted' }, '');
+  const cur = el('input', { type: 'password', id: 'pw_cur', autocomplete: 'current-password' });
+  const nw = el('input', { type: 'password', id: 'pw_new', autocomplete: 'new-password' });
+  const nw2 = el('input', { type: 'password', id: 'pw_new2', autocomplete: 'new-password' });
+  const pwForm = el('div', { class: 'panel' },
+    el('h3', { style: 'margin-top:0' }, 'เปลี่ยนรหัสผ่านของฉัน'),
+    el('div', { class: 'form-grid' },
+      el('div', {}, el('label', { for: 'pw_cur' }, 'รหัสผ่านปัจจุบัน'), cur),
+      el('div', {}, el('label', { for: 'pw_new' }, 'รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)'), nw),
+      el('div', {}, el('label', { for: 'pw_new2' }, 'ยืนยันรหัสผ่านใหม่'), nw2)),
+    el('p', {}, el('button', { class: 'primary', onclick: async () => {
+      pwMsg.className = 'err';
+      if (nw.value !== nw2.value) { pwMsg.textContent = 'รหัสผ่านใหม่สองช่องไม่ตรงกัน'; return; }
+      try {
+        await api('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: cur.value, new_password: nw.value }) });
+        pwMsg.className = 'ok';
+        pwMsg.textContent = 'เปลี่ยนรหัสผ่านแล้ว (อุปกรณ์อื่นที่ล็อกอินอยู่จะถูกออกจากระบบ)';
+        cur.value = nw.value = nw2.value = '';
+        refreshBanner();
+      } catch (e) { pwMsg.textContent = e.message; }
+    } }, 'เปลี่ยนรหัสผ่าน')), pwMsg);
+
+  const inputs = {};
+  const rows = settings.map((x) => {
+    const input = x.type === 'bool'
+      ? el('input', { type: 'checkbox', style: 'width:auto' })
+      : el('input', { type: 'number', min: String(x.min), max: String(x.max), value: String(x.value), style: 'max-width:140px' });
+    if (x.type === 'bool') input.checked = !!x.value;
+    inputs[x.key] = input;
+    return [x.label, input, x.type === 'bool' ? (x.default ? 'เปิด' : 'ปิด') : String(x.default)];
+  });
+  const setMsg = el('p', { class: 'muted' }, '');
+  const settingsPanel = el('div', { class: 'panel' },
+    el('h3', { style: 'margin-top:0' }, 'การตั้งค่าระบบ'),
+    el('p', { class: 'muted' }, 'เปลี่ยนได้ทันทีโดยไม่ต้องแก้ตัวแปรบนเซิร์ฟเวอร์ และค้างอยู่หลังรีสตาร์ท (ปิดการตรวจชั่วคราวได้ตอนสาธิต)'),
+    table(['รายการ', 'ค่า', 'ค่าเริ่มต้น'], rows),
+    el('p', {}, el('button', { class: 'primary', onclick: async () => {
+      const changes = {};
+      for (const x of settings) changes[x.key] = x.type === 'bool' ? inputs[x.key].checked : Number(inputs[x.key].value);
+      try {
+        await api('/admin/settings', { method: 'PUT', body: JSON.stringify(changes) });
+        setMsg.className = 'ok';
+        setMsg.textContent = 'บันทึกแล้ว';
+      } catch (e) { setMsg.className = 'err'; setMsg.textContent = e.message; }
+    } }, 'บันทึกการตั้งค่า')), setMsg);
+
+  const backupPanel = el('div', { class: 'panel' },
+    el('h3', { style: 'margin-top:0' }, 'สถานะการสำรองข้อมูล'),
+    table(['รายการ', 'ค่า'], [
+      ['สถานะ', backup.enabled ? (backup.blocked ? 'หยุดทำงาน (กู้ไม่สำเร็จ)' : 'ทำงานอยู่') : 'ปิดอยู่'],
+      ['สำรองสำเร็จล่าสุด', backup.lastSuccessAt ? fmtDate(backup.lastSuccessAt) : 'ยังไม่เคยหลังเริ่มระบบ'],
+      ['ขนาดล่าสุด', backup.lastSizeKb == null ? '-' : backup.lastSizeKb + ' KB'],
+      ['มีการเปลี่ยนแปลงที่ยังไม่ได้สำรอง', backup.pending_changes ? 'ใช่' : 'ไม่'],
+      ['ข้อผิดพลาดล่าสุด', backup.lastError ? `${backup.lastError} (${fmtDate(backup.lastErrorAt)})` : '-'],
+    ]));
+  panel.replaceChildren(pwForm, settingsPanel, backupPanel);
+}
 
 // ---- quest review ---------------------------------------------------------------------------------------------------
 const isJpegDataUrl = (u) => /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(u || '');

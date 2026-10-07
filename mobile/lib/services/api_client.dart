@@ -24,6 +24,9 @@ class ApiException implements Exception {
 class ApiClient {
   String? token;
 
+  /// Called once when the server says the signed-in session is no longer valid (expired, ended elsewhere, or password changed).
+  void Function()? onUnauthorized;
+
   Map<String, String> _headers({bool json = true, bool auth = true, Map<String, String>? extra}) {
     final headers = <String, String>{};
     if (json) headers['Content-Type'] = 'application/json';
@@ -34,7 +37,7 @@ class ApiClient {
 
   Uri _u(String path) => Uri.parse('$apiBaseUrl$path');
 
-  dynamic _decode(http.Response res) {
+  dynamic _decode(http.Response res, {bool sentToken = true}) {
     Map<String, dynamic>? body;
     try {
       body = res.body.isEmpty ? null : jsonDecode(res.body) as Map<String, dynamic>;
@@ -44,6 +47,7 @@ class ApiClient {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return body;
     }
+    if (res.statusCode == 401 && sentToken && token != null) onUnauthorized?.call();
     throw ApiException(body?['error']?.toString() ?? 'Request failed (${res.statusCode})', code: (body?['code'] ?? body?['status'])?.toString());
   }
 
@@ -55,7 +59,7 @@ class ApiClient {
   /// [headers] adds request headers; [auth] false omits the traveler's token (used by the kiosk, which signs in with its own key).
   Future<dynamic> post(String path, [Map<String, dynamic>? body, Map<String, String>? headers, bool auth = true]) async {
     final res = await http.post(_u(path), headers: _headers(auth: auth, extra: headers), body: jsonEncode(body ?? {}));
-    return _decode(res);
+    return _decode(res, sentToken: auth);
   }
 
   Future<dynamic> put(String path, [Map<String, dynamic>? body]) async {

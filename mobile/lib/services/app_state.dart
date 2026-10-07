@@ -64,7 +64,22 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void logout() {
+  Future<void> changePassword(String current, String next) async {
+    await apiClient.post('/auth/change-password', {'current_password': current, 'new_password': next});
+    await refreshStats();
+  }
+
+  /// Anonymises the account on the server, then signs out here.
+  Future<void> deleteAccount(String confirmUsername) async {
+    await apiClient.post('/auth/delete-account', {'confirm_username': confirmUsername});
+    logout(callServer: false);
+  }
+
+  /// Signs out. By default the server is told too (best effort) so the token stops working everywhere.
+  void logout({bool callServer = true}) {
+    if (callServer && apiClient.token != null) {
+      apiClient.post('/auth/logout', {}).catchError((_) => null);
+    }
     apiClient.token = null;
     currentUser = null;
     stats = null;

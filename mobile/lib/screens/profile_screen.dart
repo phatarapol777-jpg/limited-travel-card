@@ -74,6 +74,95 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _changePassword() async {
+    final current = TextEditingController();
+    final next = TextEditingController();
+    final again = TextEditingController();
+    String? error;
+    final done = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('เปลี่ยนรหัสผ่าน'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: current, obscureText: true, decoration: const InputDecoration(labelText: 'รหัสผ่านปัจจุบัน')),
+              const SizedBox(height: 10),
+              TextField(controller: next, obscureText: true, decoration: const InputDecoration(labelText: 'รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)')),
+              const SizedBox(height: 10),
+              TextField(controller: again, obscureText: true, decoration: const InputDecoration(labelText: 'ยืนยันรหัสผ่านใหม่')),
+              if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
+              const SizedBox(height: 8),
+              const Text('บัญชีที่เข้าด้วย Google ไม่มีรหัสผ่านให้เปลี่ยน อุปกรณ์อื่นที่ล็อกอินอยู่จะถูกออกจากระบบ', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('ยกเลิก')),
+            TextButton(
+              onPressed: () async {
+                if (next.text != again.text) return setDialog(() => error = 'รหัสผ่านใหม่สองช่องไม่ตรงกัน');
+                try {
+                  await context.read<AppState>().changePassword(current.text, next.text);
+                  if (ctx.mounted) Navigator.of(ctx).pop(true);
+                } on ApiException catch (e) {
+                  setDialog(() => error = e.message);
+                } catch (e) {
+                  setDialog(() => error = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+                }
+              },
+              child: const Text('เปลี่ยน'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (done == true && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('เปลี่ยนรหัสผ่านแล้ว')));
+  }
+
+  Future<void> _deleteAccount() async {
+    final username = context.read<AppState>().currentUser?.username ?? '';
+    final typed = TextEditingController();
+    String? error;
+    final done = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 36),
+          title: const Text('ลบบัญชีของฉัน'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('ชื่อ อีเมล เบอร์โทร และข้อมูลใบหน้าของคุณจะถูกลบ ข้อเสนอแลกเปลี่ยนที่รออยู่จะถูกยกเลิก และกู้คืนไม่ได้'),
+              const SizedBox(height: 10),
+              Text('พิมพ์ Username "$username" เพื่อยืนยัน', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              TextField(controller: typed, decoration: const InputDecoration(labelText: 'Username')),
+              if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('ยกเลิก')),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await context.read<AppState>().deleteAccount(typed.text.trim());
+                  if (ctx.mounted) Navigator.of(ctx).pop(true);
+                } on ApiException catch (e) {
+                  setDialog(() => error = e.message);
+                } catch (e) {
+                  setDialog(() => error = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+                }
+              },
+              child: const Text('ลบบัญชีถาวร', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (done == true && mounted) {
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+    }
+  }
+
   void _showMyQr(String username) {
     showDialog<void>(
       context: context,
@@ -145,6 +234,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text('@${user?.username ?? ''}', style: const TextStyle(color: Colors.grey)),
                     ]),
                   ),
+                  if (user?.usingDefaultPassword == true) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFFFFF3CD), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE0B100))),
+                      child: Row(children: [
+                        const Icon(Icons.warning_amber_rounded, color: Color(0xFF8A6D00)),
+                        const SizedBox(width: 10),
+                        const Expanded(child: Text('บัญชีแอดมินยังใช้รหัสผ่านเริ่มต้น กรุณาเปลี่ยนทันที', style: TextStyle(color: Color(0xFF5C4400)))),
+                        TextButton(onPressed: _changePassword, child: const Text('เปลี่ยน')),
+                      ]),
+                    ),
+                  ],
                   if (p != null) ...[
                     const SizedBox(height: 18),
                     RankCard(stats: p.stats),
@@ -187,6 +289,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   if (user?.isAdmin == true) _menu(Icons.admin_panel_settings, 'จัดการสถานที่ (Admin)', onTap: () => _go(const AdminScreen())),
+                  _menu(Icons.lock_outline, 'เปลี่ยนรหัสผ่าน', onTap: _changePassword),
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+                      title: const Text('ลบบัญชีของฉัน', style: TextStyle(color: Colors.red)),
+                      subtitle: const Text('ลบข้อมูลส่วนตัวและข้อมูลใบหน้าถาวร'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: user?.isAdmin == true ? null : _deleteAccount,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   const Text('ประวัติการเดินทาง', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
