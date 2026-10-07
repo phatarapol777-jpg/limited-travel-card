@@ -31,6 +31,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   final _keyController = TextEditingController();
   final _codeController = TextEditingController();
   String? _kioskListError;
+  int _listAttempts = 0;
   Timer? _retryList;
   bool _separateQrCamera = false;
   bool _starting = false;
@@ -91,7 +92,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 
   Future<void> _loadKiosks() async {
     try {
-      final data = await apiClient.get('/catalog/kiosks');
+      _listAttempts++;
+      final data = await apiClient.get('/catalog/kiosks').timeout(const Duration(seconds: 20));
       _retryList?.cancel();
       if (!mounted) return;
       setState(() {
@@ -103,7 +105,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       if (!mounted) return;
       setState(() {
         _loadingKiosks = false;
-        _kioskListError = 'โหลดรายการตู้ไม่สำเร็จ (เซิร์ฟเวอร์อาจกำลังตื่น) กำลังลองใหม่...';
+        _kioskListError = 'โหลดรายการตู้ไม่สำเร็จ (ครั้งที่ $_listAttempts: $e) กำลังลองใหม่... หรือพิมพ์รหัสตู้เองในช่องด้านล่าง';
       });
       // the server may still be waking up: keep retrying until the list arrives
       _retryList?.cancel();
