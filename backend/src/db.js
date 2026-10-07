@@ -377,4 +377,68 @@ db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 
 addColumns('physical_order_intents', { notified_at: 'TEXT' });
 
+// ---- partner shops (merchants) and the perks they attach to cards ----------------------------------------------------------
+db.exec(`
+CREATE TABLE IF NOT EXISTS merchants (
+  merchant_id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(user_id),
+  shop_name_th TEXT NOT NULL,
+  shop_name_en TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT NOT NULL,
+  cover_image TEXT,
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  address_detail TEXT NOT NULL,
+  nearby_location_id TEXT REFERENCES locations(location_id),
+  opening_hours TEXT NOT NULL,
+  phone TEXT,
+  facebook TEXT,
+  instagram TEXT,
+  line TEXT,
+  approval_status TEXT NOT NULL,
+  reject_reason TEXT,
+  pending_revision TEXT,
+  revision_note TEXT,
+  legacy_shop_id TEXT UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  reviewed_at TEXT,
+  reviewed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_merchants_status ON merchants(approval_status);
+CREATE INDEX IF NOT EXISTS idx_merchants_owner ON merchants(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS merchant_gallery (
+  image_id TEXT PRIMARY KEY,
+  merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
+  position INTEGER NOT NULL,
+  image TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_merchant_gallery ON merchant_gallery(merchant_id, position);
+
+CREATE TABLE IF NOT EXISTS merchant_items (
+  item_id TEXT PRIMARY KEY,
+  merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  price REAL,
+  image TEXT NOT NULL,
+  is_signature INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_merchant_items ON merchant_items(merchant_id, position);
+
+-- A perk a shop gives to holders of one card design; indexed by card so a card page can list the shops that honour it.
+CREATE TABLE IF NOT EXISTS merchant_privileges (
+  privilege_id TEXT PRIMARY KEY,
+  merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
+  template_id TEXT NOT NULL REFERENCES card_templates(template_id),
+  description TEXT NOT NULL,
+  start_date TEXT,
+  end_date TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_privileges_template ON merchant_privileges(template_id);
+CREATE INDEX IF NOT EXISTS idx_privileges_merchant ON merchant_privileges(merchant_id);
+`);
+
 module.exports = db;

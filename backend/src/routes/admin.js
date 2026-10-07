@@ -164,6 +164,10 @@ router.delete('/locations/:id', (req, res) => {
       cardOwnedCount = db.prepare('SELECT COUNT(*) AS c FROM all_cards WHERE template_id = ?').get(template.template_id).c;
     }
   }
+  const shopCount = db.prepare('SELECT COUNT(*) AS c FROM merchants WHERE nearby_location_id = ?').get(req.params.id).c;
+  if (shopCount > 0) {
+    return res.status(400).json({ error: 'ลบไม่ได้ เพราะมีร้านค้าพันธมิตรที่ผูกกับสถานที่นี้' });
+  }
   const questCount = db.prepare('SELECT COUNT(*) AS c FROM quests WHERE location_id = ?').get(req.params.id).c;
   if (questCount > 0) {
     return res.status(400).json({ error: 'ลบไม่ได้ เพราะมีภารกิจที่สร้างไว้ที่สถานที่นี้' });
@@ -425,6 +429,82 @@ router.post('/order-intents/:templateId/notify', (req, res) => {
     }
   })();
   res.json({ notified: pending.length });
+});
+
+// ---- partner shops: review, approve (a first submission or a change to a live shop), reject, suspend ----------------------------
+router.get('/merchants', (req, res) => {
+  const status = ['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED'].includes(req.query.status) ? req.query.status : null;
+  const rows = db.prepare(`SELECT m.merchant_id, m.shop_name_th, m.shop_name_en, m.category, m.approval_status, m.reject_reason, m.created_at, m.updated_at,
+      (m.pending_revision IS NOT NULL) AS has_revision, m.address_detail, m.latitude, m.longitude, u.username AS owner_username
+    FROM merchants m JOIN users u ON u.user_id = m.owner_user_id
+    WHERE ${status === 'PENDING' ? "(m.approval_status = 'PENDING' OR m.pending_revision IS NOT NULL)" : status ? 'm.approval_status = ?' : '1 = 1'}
+    ORDER BY (m.approval_status = 'PENDING' OR m.pending_revision IS NOT NULL) DESC, m.updated_at DESC LIMIT 100`)
+    .all(...(status && status !== 'PENDING' ? [status] : []));
+  res.json({ merchants: rows.map((r) => ({ ...r, has_revision: !!r.has_revision })) });
+});
+
+router.get('/merchants/:id', (req, res) => {
+  const M = require('../services/merchantService');
+  const m = db.prepare('SELECT m.*, u.username AS owner_username FROM merchants m JOIN users u ON u.user_id = m.owner_user_id WHERE m.merchant_id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'ไม่พบร้านค้า' });
+  res.json({
+    merchant_id: m.merchant_id, owner_username: m.owner_username, status: m.approval_status, reject_reason: m.reject_reason,
+    reviewing: m.pending_revision ? 'revision' : 'new', form: M.currentForm(m.merchant_id),
+  });
+});
+
+router.post('/merchants/:id/approve', (req, res) => {
+  const M = require('../services/merchantService');
+  const { notify } = require('../services/notify');
+  const m = db.prepare('SELECT * FROM merchants WHERE merchant_id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'ไม่พบร้านค้า' });
+  const isRevision = m.approval_status === 'APPROVED' && m.pending_revision;
+  if (m.approval_status !== 'PENDING' && !isRevision) return res.status(409).json({ error: 'ร้านนี้ไม่มีอะไรรออนุมัติ' });
+  db.transaction(() => {
+    if (m.pending_revision) M.applyForm(m.merchant_id, JSON.parse(m.pending_revision));
+    db.prepare("UPDATE merchants SET approval_status = 'APPROVED', reject_reason = NULL, pending_revision = NULL, revision_note = NULL, reviewed_at = ?, reviewed_by = ? WHERE merchant_id = ?")
+      .run(new Date().toISOString(), req.user.user_id, m.merchant_id);
+  })();
+  notify(m.owner_user_id, 'merchant_approved', isRevision ? `การแก้ไขร้าน "${m.shop_name_th}" ได้รับอนุมัติแล้ว` : `ร้าน "${m.shop_name_th}" ได้รับอนุมัติ หมุดร้านขึ้นบนแผนที่แล้ว`, { merchant_id: m.merchant_id });
+  res.json({ status: 'APPROVED' });
+});
+
+router.post('/merchants/:id/reject', (req, res) => {
+  const { notify } = require('../services/notify');
+  const reason = String((req.body || {}).reason || '').trim();
+  if (!reason || reason.length > 500) return res.status(400).json({ error: 'กรุณาระบุข้อแก้ไข/เหตุผล (ไม่เกิน 500 ตัวอักษร)' });
+  const m = db.prepare('SELECT * FROM merchants WHERE merchant_id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'ไม่พบร้านค้า' });
+  const now = new Date().toISOString();
+  if (m.approval_status === 'APPROVED' && m.pending_revision) {
+    // a rejected change: the shop stays live as it was, the owner is told what to fix
+    db.prepare('UPDATE merchants SET pending_revision = NULL, revision_note = ?, reviewed_at = ?, reviewed_by = ? WHERE merchant_id = ?').run(reason, now, req.user.user_id, m.merchant_id);
+  } else if (m.approval_status === 'PENDING') {
+    db.prepare("UPDATE merchants SET approval_status = 'REJECTED', reject_reason = ?, reviewed_at = ?, reviewed_by = ? WHERE merchant_id = ?").run(reason, now, req.user.user_id, m.merchant_id);
+  } else {
+    return res.status(409).json({ error: 'ร้านนี้ไม่มีอะไรรออนุมัติ' });
+  }
+  notify(m.owner_user_id, 'merchant_rejected', `ร้าน "${m.shop_name_th}" ต้องแก้ไข: ${reason}`, { merchant_id: m.merchant_id });
+  res.json({ status: 'rejected' });
+});
+
+router.post('/merchants/:id/suspend', (req, res) => {
+  const { notify } = require('../services/notify');
+  const reason = String((req.body || {}).reason || '').trim().slice(0, 300);
+  const m = db.prepare('SELECT * FROM merchants WHERE merchant_id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'ไม่พบร้านค้า' });
+  if (m.approval_status !== 'APPROVED') return res.status(409).json({ error: 'ระงับได้เฉพาะร้านที่เปิดใช้งานอยู่' });
+  db.prepare("UPDATE merchants SET approval_status = 'SUSPENDED', reject_reason = ? WHERE merchant_id = ?").run(reason || null, m.merchant_id);
+  notify(m.owner_user_id, 'merchant_suspended', `ร้าน "${m.shop_name_th}" ถูกระงับชั่วคราว${reason ? ': ' + reason : ''}`, { merchant_id: m.merchant_id });
+  res.json({ status: 'SUSPENDED' });
+});
+
+router.post('/merchants/:id/unsuspend', (req, res) => {
+  const m = db.prepare('SELECT * FROM merchants WHERE merchant_id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'ไม่พบร้านค้า' });
+  if (m.approval_status !== 'SUSPENDED') return res.status(409).json({ error: 'ร้านนี้ไม่ได้ถูกระงับ' });
+  db.prepare("UPDATE merchants SET approval_status = 'APPROVED', reject_reason = NULL WHERE merchant_id = ?").run(m.merchant_id);
+  res.json({ status: 'APPROVED' });
 });
 
 // ---- community moderation ----------------------------------------------------------------------------------------------

@@ -11,6 +11,7 @@ async function main() {
   const db = require('./db');
   require('./seed')();
   require('./services/kioskService').ensureKioskCodes();
+  require('./services/merchantService').migrateLegacyShops();
   backup.start(db);
   require('./services/maintenance').start();
   const { expireTrades } = require('./services/tradeService');
@@ -43,6 +44,7 @@ async function main() {
   app.use('/api/trades', require('./routes/trades'));
   app.use('/api/users', require('./routes/users'));
   app.use('/api/profile', require('./routes/profile'));
+  app.use('/api/merchants', require('./routes/merchants'));
   app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/admin', require('./routes/admin'));
   app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));

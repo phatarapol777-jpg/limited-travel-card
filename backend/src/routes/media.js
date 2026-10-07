@@ -24,4 +24,22 @@ router.get('/card/:templateId', (req, res) => {
   sendDataUrl(res, t.image);
 });
 
+// Shop pictures: public only while the shop is approved (a suspended or unapproved shop shows nothing).
+router.get('/merchant/:id/cover', (req, res) => {
+  const m = db.prepare("SELECT cover_image FROM merchants WHERE merchant_id = ? AND approval_status = 'APPROVED'").get(req.params.id);
+  sendDataUrl(res, m && m.cover_image);
+});
+
+router.get('/merchant-gallery/:imageId', (req, res) => {
+  const r = db.prepare(`SELECT g.image FROM merchant_gallery g JOIN merchants m ON m.merchant_id = g.merchant_id
+    WHERE g.image_id = ? AND m.approval_status = 'APPROVED'`).get(req.params.imageId);
+  sendDataUrl(res, r && r.image);
+});
+
+router.get('/merchant-item/:itemId', (req, res) => {
+  const r = db.prepare(`SELECT i.image FROM merchant_items i JOIN merchants m ON m.merchant_id = i.merchant_id
+    WHERE i.item_id = ? AND m.approval_status = 'APPROVED'`).get(req.params.itemId);
+  sendDataUrl(res, r && r.image);
+});
+
 module.exports = router;
