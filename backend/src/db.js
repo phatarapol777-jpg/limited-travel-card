@@ -334,6 +334,24 @@ CREATE TABLE IF NOT EXISTS physical_order_intents (
 );
 `);
 
+db.exec(`
+-- Card trades: a gift (offered card only) or a swap (offered card for a requested card). The offered card stays LOCKED_IN_TRADE while pending.
+CREATE TABLE IF NOT EXISTS trades (
+  trade_id TEXT PRIMARY KEY,
+  from_user_id TEXT NOT NULL REFERENCES users(user_id),
+  to_user_id TEXT NOT NULL REFERENCES users(user_id),
+  mode TEXT NOT NULL,
+  offered_card_id TEXT NOT NULL REFERENCES all_cards(card_instance_id),
+  requested_card_id TEXT REFERENCES all_cards(card_instance_id),
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_trades_to ON trades(to_user_id, status);
+CREATE INDEX IF NOT EXISTS idx_trades_from ON trades(from_user_id, status);
+`);
+
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 

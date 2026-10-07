@@ -12,6 +12,8 @@ async function main() {
   require('./seed')();
   require('./services/kioskService').ensureKioskCodes();
   backup.start(db);
+  const { expireTrades } = require('./services/tradeService');
+  setInterval(() => { try { expireTrades(); } catch (e) { console.error('expireTrades', e.message); } }, 5 * 60 * 1000).unref();
 
   const app = express();
   // Behind Render's proxy, so req.ip is the real client address (used by the kiosk environment check).
@@ -36,6 +38,8 @@ async function main() {
   app.use('/api/kiosk', require('./routes/kiosk'));
   app.use('/api/quests', require('./routes/quests'));
   app.use('/api/media', require('./routes/media'));
+  app.use('/api/trades', require('./routes/trades'));
+  app.use('/api/users', require('./routes/users'));
   app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/admin', require('./routes/admin'));
   app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
