@@ -16,6 +16,7 @@ const key = derive('backup-key');
 
 let dirty = false;
 let uploading = false;
+let uploadedOnce = false;
 let blocked = false; // true when a restore failed: never overwrite the stored snapshot with a fresh database
 let db = null;
 
@@ -73,6 +74,10 @@ async function upload() {
       signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const kb = Math.round(blob.length / 1024);
+    if (blob.length > 60 * 1024 * 1024) console.error(`[backup] WARNING: snapshot is ${kb} KB, close to the host's 100 MB limit`);
+    else if (kb > 4096 || !uploadedOnce) console.log(`[backup] uploaded ${kb} KB`);
+    uploadedOnce = true;
   } catch (err) {
     dirty = true; // try again on the next tick
     console.error('[backup] upload failed:', err.message);

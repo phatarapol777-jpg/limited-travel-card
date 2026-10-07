@@ -279,6 +279,49 @@ db.transaction(() => {
   db.exec('UPDATE card_templates SET minted_count = (SELECT COUNT(*) FROM all_cards WHERE all_cards.template_id = card_templates.template_id)');
 })();
 
+db.exec(`
+-- Quests proposed by users (status: pending -> approved | rejected; approved ones can be closed). Each owns one reward card template.
+CREATE TABLE IF NOT EXISTS quests (
+  quest_id TEXT PRIMARY KEY,
+  creator_user_id TEXT NOT NULL REFERENCES users(user_id),
+  title TEXT NOT NULL,
+  location_id TEXT NOT NULL REFERENCES locations(location_id),
+  description TEXT NOT NULL,
+  cover_image TEXT,
+  start_date TEXT,
+  end_date TEXT,
+  permanent INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  reject_reason TEXT,
+  template_id TEXT REFERENCES card_templates(template_id),
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT,
+  reviewed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_quests_status ON quests(status, location_id);
+
+-- One reward per user per quest.
+CREATE TABLE IF NOT EXISTS quest_claims (
+  quest_id TEXT NOT NULL REFERENCES quests(quest_id),
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  card_instance_id TEXT NOT NULL,
+  claimed_at TEXT NOT NULL,
+  PRIMARY KEY (quest_id, user_id)
+);
+
+-- In-app notifications (quest decisions, trade offers and results).
+CREATE TABLE IF NOT EXISTS notifications (
+  notification_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  type TEXT NOT NULL,
+  text TEXT NOT NULL,
+  data_json TEXT,
+  read_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
+`);
+
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 

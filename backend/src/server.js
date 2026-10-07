@@ -34,6 +34,9 @@ async function main() {
   app.use('/api/history', require('./routes/history'));
   app.use('/api/booking', require('./routes/booking'));
   app.use('/api/kiosk', require('./routes/kiosk'));
+  app.use('/api/quests', require('./routes/quests'));
+  app.use('/api/media', require('./routes/media'));
+  app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/admin', require('./routes/admin'));
   app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
 

@@ -110,6 +110,10 @@ router.delete('/locations/:id', (req, res) => {
       cardOwnedCount = db.prepare('SELECT COUNT(*) AS c FROM all_cards WHERE template_id = ?').get(template.template_id).c;
     }
   }
+  const questCount = db.prepare('SELECT COUNT(*) AS c FROM quests WHERE location_id = ?').get(req.params.id).c;
+  if (questCount > 0) {
+    return res.status(400).json({ error: 'ลบไม่ได้ เพราะมีภารกิจที่สร้างไว้ที่สถานที่นี้' });
+  }
   if (historyCount > 0 || cardOwnedCount > 0) {
     return res.status(400).json({ error: 'ลบไม่ได้ เพราะมีนักท่องเที่ยวเช็คอินหรือได้รับการ์ดจากสถานที่นี้แล้ว' });
   }
@@ -180,6 +184,50 @@ router.get('/audit', (req, res) => {
     FROM checkin_audit a JOIN users u ON u.user_id = a.user_id JOIN checkin_kiosks k ON k.kiosk_id = a.kiosk_id
     JOIN locations l ON l.location_id = k.location_id ORDER BY a.created_at DESC LIMIT 100`).all();
   res.json({ audit });
+});
+
+// ---- quest requests: review, approve (creates the signed QR) or reject with a reason -------------------------------
+router.get('/quests', (req, res) => {
+  const { QUEST_SELECT, questView } = require('./quests');
+  const status = ['pending', 'approved', 'rejected', 'closed'].includes(req.query.status) ? req.query.status : null;
+  const rows = db.prepare(`${QUEST_SELECT} ${status ? 'WHERE q.status = ?' : ''} ORDER BY q.created_at DESC LIMIT 100`).all(...(status ? [status] : []));
+  res.json({ quests: rows.map((q) => questView(q, { creator_username: q.creator_username })) });
+});
+
+router.get('/quests/:id/images', (req, res) => {
+  const q = db.prepare('SELECT q.cover_image, t.image AS card_image FROM quests q LEFT JOIN card_templates t ON t.template_id = q.template_id WHERE q.quest_id = ?').get(req.params.id);
+  if (!q) return res.status(404).json({ error: 'ไม่พบภารกิจ' });
+  res.json({ cover_image: q.cover_image, card_image: q.card_image });
+});
+
+router.post('/quests/:id/approve', (req, res) => {
+  const q = db.prepare('SELECT * FROM quests WHERE quest_id = ?').get(req.params.id);
+  if (!q) return res.status(404).json({ error: 'ไม่พบภารกิจ' });
+  if (q.status !== 'pending') return res.status(409).json({ error: 'ภารกิจนี้ถูกพิจารณาไปแล้ว' });
+  db.prepare("UPDATE quests SET status = 'approved', reject_reason = NULL, reviewed_at = ?, reviewed_by = ? WHERE quest_id = ?")
+    .run(new Date().toISOString(), req.user.user_id, q.quest_id);
+  require('../services/notify').notify(q.creator_user_id, 'quest_approved', `ภารกิจ "${q.title}" ได้รับอนุมัติแล้ว ดาวน์โหลด QR Code ไปติดที่สถานที่ได้เลย`, { quest_id: q.quest_id });
+  res.json({ status: 'approved' });
+});
+
+router.post('/quests/:id/reject', (req, res) => {
+  const reason = String((req.body || {}).reason || '').trim();
+  if (!reason || reason.length > 500) return res.status(400).json({ error: 'กรุณาระบุเหตุผลที่ไม่อนุมัติ (ไม่เกิน 500 ตัวอักษร)' });
+  const q = db.prepare('SELECT * FROM quests WHERE quest_id = ?').get(req.params.id);
+  if (!q) return res.status(404).json({ error: 'ไม่พบภารกิจ' });
+  if (q.status !== 'pending') return res.status(409).json({ error: 'ภารกิจนี้ถูกพิจารณาไปแล้ว' });
+  db.prepare("UPDATE quests SET status = 'rejected', reject_reason = ?, reviewed_at = ?, reviewed_by = ? WHERE quest_id = ?")
+    .run(reason, new Date().toISOString(), req.user.user_id, q.quest_id);
+  require('../services/notify').notify(q.creator_user_id, 'quest_rejected', `ภารกิจ "${q.title}" ไม่ได้รับอนุมัติ: ${reason}`, { quest_id: q.quest_id });
+  res.json({ status: 'rejected' });
+});
+
+router.post('/quests/:id/close', (req, res) => {
+  const q = db.prepare('SELECT * FROM quests WHERE quest_id = ?').get(req.params.id);
+  if (!q) return res.status(404).json({ error: 'ไม่พบภารกิจ' });
+  if (q.status !== 'approved') return res.status(409).json({ error: 'ปิดได้เฉพาะภารกิจที่อนุมัติแล้ว' });
+  db.prepare("UPDATE quests SET status = 'closed' WHERE quest_id = ?").run(q.quest_id);
+  res.json({ status: 'closed' });
 });
 
 router.get('/kiosk-sessions/:id/photo', (req, res) => {

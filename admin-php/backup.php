@@ -47,7 +47,7 @@ if ($method === 'GET') {
 
 if ($method === 'POST') {
     $body = file_get_contents('php://input');
-    if ($body === false || strlen($body) < 40 || strlen($body) > 30 * 1024 * 1024 || substr($body, 0, 4) !== 'TCB1') {
+    if ($body === false || strlen($body) < 40 || strlen($body) > 100 * 1024 * 1024 || substr($body, 0, 4) !== 'TCB1') {
         http_response_code(400);
         exit('bad snapshot');
     }
