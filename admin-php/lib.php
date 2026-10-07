@@ -24,10 +24,16 @@ function db(): PDO {
     static $pdo = null;
     if ($pdo === null) {
         $cfg = config();
-        $pdo = new PDO($cfg['db_dsn'], $cfg['db_user'] ?? null, $cfg['db_pass'] ?? null, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
+        try {
+            $pdo = new PDO($cfg['db_dsn'], $cfg['db_user'] ?? null, $cfg['db_pass'] ?? null, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+        } catch (PDOException $e) {
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            exit('เชื่อมต่อฐานข้อมูลไม่สำเร็จ กรุณาตรวจสอบ db_dsn / db_user / db_pass ใน config.php (' . $e->getCode() . ')');
+        }
         foreach (array_filter(array_map('trim', explode(';', (string)file_get_contents(__DIR__ . '/schema.sql')))) as $stmt) {
             $stmt = preg_replace('/^--.*$/m', '', $stmt);
             if (trim($stmt) !== '') {
