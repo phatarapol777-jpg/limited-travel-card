@@ -165,6 +165,22 @@ router.get('/checkins', (req, res) => {
   res.json({ checkins });
 });
 
+router.get('/kiosks', (req, res) => {
+  const { kioskKey } = require('../services/kioskService');
+  const rows = db.prepare(`SELECT k.kiosk_code, k.last_seen_at, l.name AS location_name, l.province
+    FROM checkin_kiosks k JOIN locations l ON l.location_id = k.location_id ORDER BY k.kiosk_code`).all();
+  res.json({ kiosks: rows.map((k) => ({ ...k, kiosk_key: kioskKey(k.kiosk_code) })) });
+});
+
+router.get('/audit', (req, res) => {
+  const audit = db.prepare(`SELECT a.log_id, a.created_at, a.face_match_score, a.passed, a.edge_passed, a.edge_ms, a.reason, a.checks_json, a.session_id,
+      u.username, k.kiosk_code, l.name AS location_name,
+      (SELECT 1 FROM checkin_sessions s WHERE s.session_id = a.session_id AND s.face_photo IS NOT NULL) AS has_photo
+    FROM checkin_audit a JOIN users u ON u.user_id = a.user_id JOIN checkin_kiosks k ON k.kiosk_id = a.kiosk_id
+    JOIN locations l ON l.location_id = k.location_id ORDER BY a.created_at DESC LIMIT 100`).all();
+  res.json({ audit });
+});
+
 router.get('/kiosk-sessions/:id/photo', (req, res) => {
   const row = db.prepare('SELECT face_photo FROM checkin_sessions WHERE session_id = ?').get(req.params.id);
   if (!row || !row.face_photo) return res.status(404).json({ error: 'ไม่พบภาพ' });

@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 const db = new Database(path.join(dataDir, 'app.db'));
 db.pragma('journal_mode = WAL');
@@ -202,6 +202,41 @@ for (const col of ['face_photo', 'face_descriptor']) {
   if (!userColumns.includes(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`);
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL');
+
+function addColumns(table, columns) {
+  const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  for (const [name, type] of Object.entries(columns)) {
+    if (!existing.includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+  }
+}
+addColumns('checkin_kiosks', { kiosk_code: 'TEXT', last_seen_at: 'TEXT', last_ip: 'TEXT', last_lat: 'REAL', last_lng: 'REAL' });
+addColumns('checkin_sessions', { session_key: 'TEXT', env_ok: 'INTEGER', phone_ip: 'TEXT', phone_lat: 'REAL', phone_lng: 'REAL' });
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosks_code ON checkin_kiosks(kiosk_code) WHERE kiosk_code IS NOT NULL;
+
+-- The kiosk's rotating "BLE" tokens (kept briefly so the server can re-check the token inside a phone's QR).
+CREATE TABLE IF NOT EXISTS kiosk_ble_tokens (
+  kiosk_id TEXT NOT NULL REFERENCES checkin_kiosks(kiosk_id),
+  token TEXT NOT NULL,
+  issued_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kiosk_ble_tokens ON kiosk_ble_tokens(kiosk_id, issued_at);
+
+-- One row per kiosk check-in attempt (passed or not).
+CREATE TABLE IF NOT EXISTS checkin_audit (
+  log_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  kiosk_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  face_match_score REAL,
+  passed INTEGER NOT NULL,
+  edge_passed INTEGER,
+  edge_ms INTEGER,
+  reason TEXT,
+  checks_json TEXT
+);
+`);
 
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');

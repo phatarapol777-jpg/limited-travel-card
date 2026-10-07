@@ -5,8 +5,11 @@ const cors = require('cors');
 const seed = require('./seed');
 
 seed();
+require('./services/kioskService').ensureKioskCodes();
 
 const app = express();
+// Behind Render's proxy, so req.ip is the real client address (used by the kiosk environment check).
+app.set('trust proxy', true);
 const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true }));
 app.use(express.json({ limit: '5mb' }));
@@ -15,7 +18,6 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/catalog', require('./routes/catalog'));
-app.use('/api/checkin', require('./routes/checkin'));
 app.use('/api/cards', require('./routes/cards'));
 app.use('/api/community', require('./routes/community'));
 app.use('/api/history', require('./routes/history'));

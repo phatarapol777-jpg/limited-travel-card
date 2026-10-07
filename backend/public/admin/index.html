@@ -122,7 +122,7 @@ document.getElementById('password').addEventListener('keydown', (e) => { if (e.k
 document.getElementById('logoutBtn').addEventListener('click', logout);
 
 const TABS = [
-  ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'],
+  ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'], ['audit', 'บันทึกการตรวจ'], ['kiosks', 'ตู้เช็คอิน'],
 ];
 
 function renderTabs() {
@@ -179,6 +179,20 @@ async function renderPanel() {
       panel.replaceChildren(table(['เวลา', 'ผู้ใช้', 'สถานที่', 'จังหวัด', 'ยืนยันใบหน้า'],
         checkins.map((c) => [fmtDate(c.timestamp), c.username, c.location_name, c.province,
           c.photo_session_id ? el('button', { class: 'small', onclick: () => showFacePhoto(photoBox, c) }, 'ดูภาพ') : '-'])), photoBox);
+    } else if (state.tab === 'audit') {
+      const { audit } = await api('/admin/audit');
+      const photoBox = el('div', { style: 'margin-top:14px' });
+      panel.replaceChildren(table(['เวลา', 'ผู้ใช้', 'ตู้ / สถานที่', 'ความเหมือนใบหน้า', 'ผล', 'ตู้ตัดสิน (ms)', 'เหตุผล', 'ภาพ'],
+        audit.map((a) => [fmtDate(a.created_at), a.username, `${a.kiosk_code} · ${a.location_name}`,
+          a.face_match_score === null ? '-' : `${a.face_match_score}%`, a.passed ? 'ผ่าน' : 'ไม่ผ่าน',
+          a.edge_ms === null ? '-' : String(a.edge_ms), a.reason || '-',
+          a.has_photo ? el('button', { class: 'small', onclick: () => showFacePhoto(photoBox, { photo_session_id: a.session_id, username: a.username, location_name: a.location_name }) }, 'ดูภาพ') : '-'])), photoBox);
+    } else if (state.tab === 'kiosks') {
+      const { kiosks } = await api('/admin/kiosks');
+      panel.replaceChildren(
+        el('p', { class: 'muted' }, 'ใช้รหัสตู้และคีย์นี้ตั้งค่าที่เครื่อง Kiosk (ห้ามเผยแพร่คีย์) QR หน้าตู้คือ TRVKIOSK|รหัสตู้'),
+        table(['รหัสตู้', 'สถานที่', 'คีย์ตู้', 'ออนไลน์ล่าสุด'],
+          kiosks.map((k) => [k.kiosk_code, `${k.location_name} (${k.province})`, k.kiosk_key, k.last_seen_at ? fmtDate(k.last_seen_at) : 'ยังไม่เคย'])));
     } else if (state.tab === 'locations') {
       await renderLocations(panel);
     }

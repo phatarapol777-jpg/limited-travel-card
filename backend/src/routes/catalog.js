@@ -18,7 +18,7 @@ router.get('/locations/:id', (req, res) => {
 });
 
 router.get('/kiosks', (req, res) => {
-  const kiosks = db.prepare(`SELECT k.kiosk_id, k.location_id, k.status, l.name AS location_name, l.province
+  const kiosks = db.prepare(`SELECT k.kiosk_id, k.kiosk_code, k.location_id, k.status, l.name AS location_name, l.province
     FROM checkin_kiosks k JOIN locations l ON l.location_id = k.location_id ORDER BY l.name`).all();
   res.json({ kiosks });
 });
