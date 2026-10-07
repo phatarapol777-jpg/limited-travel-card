@@ -48,7 +48,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             lastName: lastName,
             email: _email.text.trim(),
             phone: _phone.text.trim(),
-            facePhoto: face.photoDataUrl,
             faceDescriptor: face.descriptor,
           );
       if (!mounted) return;
@@ -115,7 +114,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       FaceCaptureWidget(onChanged: (c) => setState(() => _face = c)),
                       const SizedBox(height: 6),
                       const Text(
-                        'การสมัครถือว่าคุณยินยอมให้จัดเก็บภาพและข้อมูลลักษณะใบหน้า (ข้อมูลส่วนบุคคลที่อ่อนไหว) เพื่อการยืนยันตัวตนเท่านั้น',
+                        'การสมัครถือว่าคุณยินยอมให้จัดเก็บข้อมูลลักษณะใบหน้า (ข้อมูลส่วนบุคคลที่อ่อนไหว) เพื่อการยืนยันตัวตนเท่านั้น โดยไม่เก็บรูปถ่ายของคุณ',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.grey, fontSize: 11),
                       ),

@@ -14,7 +14,6 @@ class AppState extends ChangeNotifier {
     required String lastName,
     required String email,
     required String phone,
-    required String facePhoto,
     required List<double> faceDescriptor,
   }) async {
     final data = await apiClient.post('/auth/register', {
@@ -24,7 +23,6 @@ class AppState extends ChangeNotifier {
       'last_name': lastName,
       'email': email,
       'phone': phone,
-      'face_photo': facePhoto,
       'face_descriptor': faceDescriptor,
     });
     apiClient.token = data['token'];
@@ -49,8 +47,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> saveFace(String facePhoto, List<double> faceDescriptor) async {
-    await apiClient.put('/auth/face', {'face_photo': facePhoto, 'face_descriptor': faceDescriptor});
+  Future<void> saveFace(List<double> faceDescriptor) async {
+    await apiClient.put('/auth/face', {'face_descriptor': faceDescriptor});
+    await refreshStats();
+  }
+
+  Future<void> deleteFace() async {
+    await apiClient.delete('/auth/face');
     await refreshStats();
   }
 

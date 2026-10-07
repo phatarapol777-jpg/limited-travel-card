@@ -10,8 +10,6 @@ class FaceCapture {
   final Uint8List bytes;
   final List<double> descriptor;
   FaceCapture(this.bytes, this.descriptor);
-
-  String get photoDataUrl => 'data:image/jpeg;base64,${base64Encode(bytes)}';
 }
 
 /// Live camera preview with a capture button. Reports the captured face (or null after "retake").

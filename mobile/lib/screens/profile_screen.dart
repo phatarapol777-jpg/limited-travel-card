@@ -39,6 +39,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _confirmDeleteFace() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ลบข้อมูลใบหน้า?'),
+        content: const Text('หลังลบ คุณจะเช็คอินที่ Kiosk ไม่ได้จนกว่าจะลงทะเบียนใบหน้าใหม่'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ยกเลิก')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ลบ')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await context.read<AppState>().deleteFace();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ลบไม่สำเร็จ: $e')));
+    }
+  }
+
   String _levelFor(int cardCount) {
     if (cardCount >= 6) return 'นักสะสมระดับตำนาน';
     if (cardCount >= 3) return 'นักสะสมมือทอง';
@@ -107,7 +127,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: Icon(user?.hasFace == true ? Icons.face : Icons.face_retouching_off, color: user?.hasFace == true ? AppColors.success : Colors.orange),
                       title: Text(user?.hasFace == true ? 'ใบหน้าลงทะเบียนแล้ว' : 'ยังไม่ได้ลงทะเบียนใบหน้า'),
                       subtitle: Text(user?.hasFace == true ? 'แตะเพื่อสแกนใหม่' : 'จำเป็นสำหรับการเช็คอินที่ Kiosk'),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: user?.hasFace == true
+                          ? IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'ลบข้อมูลใบหน้า', onPressed: _confirmDeleteFace)
+                          : const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FaceEnrollScreen())),
                     ),
                   ),

@@ -25,7 +25,7 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
       _error = null;
     });
     try {
-      await context.read<AppState>().saveFace(capture.photoDataUrl, capture.descriptor);
+      await context.read<AppState>().saveFace(capture.descriptor);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('บันทึกใบหน้าเรียบร้อยแล้ว')));
       Navigator.of(context).pop(true);
@@ -57,7 +57,7 @@ class _FaceEnrollScreenState extends State<FaceEnrollScreen> {
               Center(child: FaceCaptureWidget(onChanged: (c) => setState(() => _capture = c))),
               const SizedBox(height: 16),
               const Text(
-                'ระบบจัดเก็บภาพใบหน้าและข้อมูลลักษณะใบหน้าของคุณเพื่อการยืนยันตัวตนเท่านั้น (ข้อมูลส่วนบุคคลที่อ่อนไหว) โดยการกดบันทึกถือว่าคุณยินยอม',
+                'ระบบจัดเก็บเฉพาะข้อมูลลักษณะใบหน้าของคุณ (ไม่เก็บรูปถ่าย) เพื่อการยืนยันตัวตนเท่านั้น เป็นข้อมูลส่วนบุคคลที่อ่อนไหว โดยการกดบันทึกถือว่าคุณยินยอม',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),

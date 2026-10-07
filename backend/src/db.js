@@ -203,4 +203,7 @@ for (const col of ['face_photo', 'face_descriptor']) {
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL');
 
+// Registration photos are no longer stored; wipe any saved by earlier versions.
+db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
+
 module.exports = db;
