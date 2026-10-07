@@ -60,6 +60,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   String? _qrLabel;
   String? _latestQr;
   String _prompt = '';
+  String? _failure;
   EdgeDecision? _decision;
   int? _decisionMs;
   String _userName = '';
@@ -133,6 +134,19 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _key = _keyController.text.trim();
     _locationName = kiosk != null ? '${kiosk.locationName} (${kiosk.province})' : _code;
     _geo = await currentPosition();
+    // Ask for camera permission now (and release the camera), so it is not first requested when a traveler is waiting.
+    try {
+      final test = await openLiveCamera(front: true);
+      await test.close();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _setupError = 'เปิดกล้องของเครื่องนี้ไม่ได้ ($e) กรุณาอนุญาตการใช้กล้องในเบราว์เซอร์แล้วกดเริ่มทำงานอีกครั้ง';
+          _starting = false;
+        });
+      }
+      return;
+    }
     _recentTokens.clear();
     _rotateToken();
     try {
@@ -214,6 +228,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _decisionMs = null;
     _serverVerdict = null;
     _doorOpen = false;
+    _failure = null;
     _userName = session['user_name'] as String? ?? '';
     setState(() {
       _stage = _Stage.session;
@@ -246,9 +261,10 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
         await Future.delayed(const Duration(milliseconds: 300));
       }
     } on LivenessException catch (e) {
-      if (mounted) setState(() => _prompt = e.message);
+      _failure = e.message;
     } catch (e) {
-      if (mounted) setState(() => _prompt = 'เปิดกล้องไม่สำเร็จ: $e');
+      debugPrint('kiosk session error: $e');
+      _failure = 'เปิดกล้องหรืออ่านภาพไม่สำเร็จ: $e';
     }
     await _closeCameras();
     if (!mounted) return;
@@ -412,10 +428,10 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
                   TextField(
                     controller: _codeController,
                     textCapitalization: TextCapitalization.characters,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: AppColors.navy),
                     decoration: const InputDecoration(
                       labelText: 'หรือพิมพ์รหัสตู้ เช่น KSK-001 (ใช้เมื่อเลือกจากรายการไม่ได้)',
-                      labelStyle: TextStyle(color: Colors.white70),
+                      labelStyle: TextStyle(color: Colors.black54),
                       enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white38)),
                       focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.gold)),
                     ),
@@ -424,10 +440,10 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
                   TextField(
                     controller: _keyController,
                     obscureText: true,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: AppColors.navy),
                     decoration: const InputDecoration(
                       labelText: 'คีย์ตู้ (ดูได้จากหน้าแอดมิน > ตู้เช็คอิน)',
-                      labelStyle: TextStyle(color: Colors.white70),
+                      labelStyle: TextStyle(color: Colors.black54),
                       enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white38)),
                       focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.gold)),
                     ),
@@ -538,6 +554,14 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
                   ),
               ]),
             ),
+            if (_failure != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
+                child: _text('สาเหตุที่ตู้หยุดทำงาน: $_failure', size: 13, color: Colors.orangeAccent),
+              ),
+            ],
             if (!d.passed && d.reasons.isNotEmpty) ...[
               const SizedBox(height: 10),
               _text(d.reasons.join('\n'), size: 12, color: Colors.redAccent),
