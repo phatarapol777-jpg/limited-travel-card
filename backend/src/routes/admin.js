@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { newId, authMiddleware, adminMiddleware } = require('../util');
+const { normalizeRarity } = require('../services/cardService');
 
 const router = express.Router();
 router.use(authMiddleware, adminMiddleware);
@@ -51,9 +52,9 @@ router.post('/locations', (req, res) => {
     .run(missionId, locationId, mission_title, mission_description || '');
 
   const templateId = newId('tpl');
-  db.prepare(`INSERT INTO card_templates (template_id, location_id, mission_id, name, icon, color_hex, type, rarity)
-    VALUES (?, ?, ?, ?, ?, ?, 'mission', ?)`)
-    .run(templateId, locationId, missionId, card_name, card_icon || 'style', card_color_hex || '#4C6B8A', card_rarity || 'common');
+  db.prepare(`INSERT INTO card_templates (template_id, location_id, mission_id, name, icon, color_hex, type, rarity, card_type)
+    VALUES (?, ?, ?, ?, ?, ?, 'mission', ?, 'QUEST_LOCATION')`)
+    .run(templateId, locationId, missionId, card_name, card_icon || 'style', card_color_hex || '#4C6B8A', normalizeRarity(card_rarity));
 
   res.status(201).json({ location_id: locationId, mission_id: missionId, template_id: templateId, kiosk_id: kioskId });
 });
@@ -88,7 +89,7 @@ router.put('/locations/:id', (req, res) => {
     const card = db.prepare('SELECT * FROM card_templates WHERE mission_id = ?').get(mission.mission_id);
     if (card) {
       db.prepare('UPDATE card_templates SET name = ?, icon = ?, color_hex = ?, rarity = ? WHERE template_id = ?')
-        .run(card_name, card_icon || 'style', card_color_hex || '#4C6B8A', card_rarity || 'common', card.template_id);
+        .run(card_name, card_icon || 'style', card_color_hex || '#4C6B8A', normalizeRarity(card_rarity), card.template_id);
     }
   }
 

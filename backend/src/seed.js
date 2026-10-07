@@ -1,5 +1,6 @@
 const db = require('./db');
 const { newId, hashPassword } = require('./util');
+const { mintCard } = require('./services/cardService');
 
 function seed() {
   const count = db.prepare('SELECT COUNT(*) AS c FROM locations').get().c;
@@ -67,17 +68,17 @@ function seed() {
 
   const cardDefs = [
     { name: 'การ์ดวัดพระแก้ว', icon: 'temple_buddhist', color: '#C9A227', type: 'mission', rarity: 'rare', locIdx: 0, msnIdx: 0 },
-    { name: 'การ์ดดอยสุเทพ', icon: 'landscape', color: '#4C6B8A', type: 'mission', rarity: 'common', locIdx: 1, msnIdx: 1 },
-    { name: 'การ์ดเกาะพีพี', icon: 'beach_access', color: '#1CA9C9', type: 'mission', rarity: 'epic', locIdx: 2, msnIdx: 2 },
+    { name: 'การ์ดดอยสุเทพ', icon: 'landscape', color: '#4C6B8A', type: 'mission', rarity: 'normal', locIdx: 1, msnIdx: 1 },
+    { name: 'การ์ดเกาะพีพี', icon: 'beach_access', color: '#1CA9C9', type: 'mission', rarity: 'special', locIdx: 2, msnIdx: 2 },
     { name: 'การ์ดสุโขทัย', icon: 'account_balance', color: '#8B5E3C', type: 'mission', rarity: 'rare', locIdx: 3, msnIdx: 3 },
-    { name: 'การ์ดแม่น้ำแคว', icon: 'train', color: '#5A7D5A', type: 'mission', rarity: 'common', locIdx: 4, msnIdx: 4 },
-    { name: 'การ์ดภูทอก', icon: 'terrain', color: '#7A4F9E', type: 'mission', rarity: 'epic', locIdx: 5, msnIdx: 5 },
-    { name: 'การ์ดนักสะสมมือใหม่', icon: 'star', color: '#B0B0B0', type: 'random', rarity: 'common', locIdx: null, msnIdx: null },
-    { name: 'การ์ดนักเดินทางตำนาน', icon: 'auto_awesome', color: '#D4AF37', type: 'random', rarity: 'epic', locIdx: null, msnIdx: null },
+    { name: 'การ์ดแม่น้ำแคว', icon: 'train', color: '#5A7D5A', type: 'mission', rarity: 'normal', locIdx: 4, msnIdx: 4 },
+    { name: 'การ์ดภูทอก', icon: 'terrain', color: '#7A4F9E', type: 'mission', rarity: 'special', locIdx: 5, msnIdx: 5 },
+    { name: 'การ์ดนักสะสมมือใหม่', icon: 'star', color: '#B0B0B0', type: 'random', rarity: 'normal', locIdx: null, msnIdx: null },
+    { name: 'การ์ดนักเดินทางตำนาน', icon: 'auto_awesome', color: '#D4AF37', type: 'random', rarity: 'special', locIdx: null, msnIdx: null },
   ];
   const templateIds = [];
-  const insertTemplate = db.prepare(`INSERT INTO card_templates (template_id, location_id, mission_id, name, icon, color_hex, type, rarity)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertTemplate = db.prepare(`INSERT INTO card_templates (template_id, location_id, mission_id, name, icon, color_hex, type, rarity, card_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   for (const c of cardDefs) {
     const id = newId('tpl');
     templateIds.push(id);
@@ -85,7 +86,7 @@ function seed() {
       id,
       c.locIdx === null ? null : locationIds[c.locIdx],
       c.msnIdx === null ? null : missionIds[c.msnIdx],
-      c.name, c.icon, c.color, c.type, c.rarity,
+      c.name, c.icon, c.color, c.type, c.rarity, c.type === 'random' ? 'PHYSICAL_BLIND_PACK' : 'QUEST_LOCATION',
     );
   }
 
@@ -101,10 +102,8 @@ function seed() {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`)
     .run(newId('usr'), 'admin', adminHash, adminSalt, 'ผู้ดูแล', 'ระบบ', 'admin@travelcard.app', null, null, now);
 
-  const insertAllCard = db.prepare(`INSERT INTO all_cards (card_instance_id, template_id, owner_user_id, unique_code, acquired_at)
-    VALUES (?, ?, ?, ?, ?)`);
   [0, 1, 6].forEach((tplIdx) => {
-    insertAllCard.run(newId('card'), templateIds[tplIdx], demoUserId, newId('code'), now);
+    mintCard({ templateId: templateIds[tplIdx], userId: demoUserId, reason: 'seed' });
   });
 
   const insertHistory = db.prepare(`INSERT INTO travel_history (history_id, user_id, location_id, timestamp, status)

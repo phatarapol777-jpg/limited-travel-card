@@ -1,32 +1,13 @@
 const express = require('express');
 const db = require('../db');
 const { newId, authMiddleware } = require('../util');
+const { CARD_SELECT, cardView } = require('../services/cardService');
 
 const router = express.Router();
 
 router.get('/', authMiddleware, (req, res) => {
-  const cards = db.prepare(`SELECT c.*, t.name, t.icon, t.color_hex, t.rarity, t.type,
-      l.name AS location_name
-    FROM all_cards c
-    JOIN card_templates t ON t.template_id = c.template_id
-    LEFT JOIN locations l ON l.location_id = t.location_id
-    WHERE c.owner_user_id = ?
-    ORDER BY c.acquired_at DESC`).all(req.user.user_id);
+  const cards = db.prepare(`${CARD_SELECT} WHERE c.owner_user_id = ? ORDER BY c.acquired_at DESC`).all(req.user.user_id).map(cardView);
   res.json({ cards });
-});
-
-router.post('/transfer', authMiddleware, (req, res) => {
-  const { card_instance_id, to_username } = req.body || {};
-  const card = db.prepare('SELECT * FROM all_cards WHERE card_instance_id = ?').get(card_instance_id);
-  if (!card) return res.status(404).json({ error: 'Card not found' });
-  if (card.owner_user_id !== req.user.user_id) return res.status(403).json({ error: 'You do not own this card' });
-
-  const target = db.prepare('SELECT * FROM users WHERE username = ?').get(to_username);
-  if (!target) return res.status(404).json({ error: 'Recipient user not found' });
-  if (target.user_id === req.user.user_id) return res.status(400).json({ error: 'Cannot transfer to yourself' });
-
-  db.prepare('UPDATE all_cards SET owner_user_id = ? WHERE card_instance_id = ?').run(target.user_id, card_instance_id);
-  res.json({ status: 'transferred', to: target.username });
 });
 
 router.post('/order', authMiddleware, (req, res) => {

@@ -238,6 +238,47 @@ CREATE TABLE IF NOT EXISTS checkin_audit (
 );
 `);
 
+// ---- card system: serials, mint limits, activation status, ownership log, quests, trades ----------------------------
+// Every change here is idempotent: a restored (older) snapshot is migrated again on each boot.
+addColumns('card_templates', {
+  card_type: 'TEXT', image: 'TEXT', lore: 'TEXT', mint_limit: 'INTEGER', minted_count: 'INTEGER NOT NULL DEFAULT 0', quest_id: 'TEXT',
+});
+addColumns('all_cards', {
+  serial_number: 'INTEGER', activation_status: 'TEXT', card_type: 'TEXT', quest_completion_id: 'TEXT',
+  physical_nfc_uid: 'TEXT', activation_code: 'TEXT', claimed_at: 'TEXT',
+});
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_serial ON all_cards(template_id, serial_number) WHERE serial_number IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_activation ON all_cards(activation_code) WHERE activation_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_cards_owner ON all_cards(owner_user_id);
+
+-- Every change of hands (mint, activation, trade, gift), newest last.
+CREATE TABLE IF NOT EXISTS card_ownership_log (
+  log_id TEXT PRIMARY KEY,
+  card_instance_id TEXT NOT NULL REFERENCES all_cards(card_instance_id),
+  from_user_id TEXT,
+  to_user_id TEXT,
+  reason TEXT NOT NULL,
+  trade_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ownership_card ON card_ownership_log(card_instance_id, created_at);
+`);
+db.transaction(() => {
+  db.exec("UPDATE card_templates SET rarity = 'normal' WHERE rarity = 'common'");
+  db.exec("UPDATE card_templates SET rarity = 'special' WHERE rarity = 'epic'");
+  db.exec("UPDATE card_templates SET card_type = CASE WHEN type = 'random' THEN 'PHYSICAL_BLIND_PACK' ELSE 'QUEST_LOCATION' END WHERE card_type IS NULL");
+  db.exec('UPDATE all_cards SET card_type = (SELECT card_type FROM card_templates t WHERE t.template_id = all_cards.template_id) WHERE card_type IS NULL');
+  db.exec("UPDATE all_cards SET activation_status = CASE WHEN owner_user_id IS NULL THEN 'UNCLAIMED' ELSE 'CLAIMED' END WHERE activation_status IS NULL");
+  db.exec('UPDATE all_cards SET claimed_at = acquired_at WHERE claimed_at IS NULL AND acquired_at IS NOT NULL');
+  const maxSerial = db.prepare('SELECT COALESCE(MAX(serial_number), 0) AS m FROM all_cards WHERE template_id = ?');
+  const setSerial = db.prepare('UPDATE all_cards SET serial_number = ? WHERE card_instance_id = ?');
+  for (const row of db.prepare('SELECT card_instance_id, template_id FROM all_cards WHERE serial_number IS NULL ORDER BY template_id, acquired_at, rowid').all()) {
+    setSerial.run(maxSerial.get(row.template_id).m + 1, row.card_instance_id);
+  }
+  db.exec('UPDATE card_templates SET minted_count = (SELECT COUNT(*) FROM all_cards WHERE all_cards.template_id = card_templates.template_id)');
+})();
+
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 
