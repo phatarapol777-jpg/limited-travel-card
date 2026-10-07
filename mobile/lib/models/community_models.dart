@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 
+/// Bumped when something that appears inside posts changed (display name, picture, badge, a new post...), so every open feed reloads.
+final ValueNotifier<int> communityRefresh = ValueNotifier<int>(0);
+
 const reactionTypes = ['LIKE', 'LOVE', 'WOW', 'SAD', 'ANGRY'];
 const reactionEmoji = {'LIKE': '👍', 'LOVE': '❤️', 'WOW': '😮', 'SAD': '😢', 'ANGRY': '😡'};
 const reactionLabel = {'LIKE': 'ถูกใจ', 'LOVE': 'รักเลย', 'WOW': 'ว้าว', 'SAD': 'เศร้า', 'ANGRY': 'โกรธ'};

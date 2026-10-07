@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/collection_models.dart';
+import '../models/community_models.dart';
+import '../widgets/community_widgets.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/app_state.dart';
@@ -30,6 +32,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   List<TravelHistoryEntry> _history = [];
   ProfileData? _profile;
+  CommunityProfile? _community; // how the community sees me: display name, picture, badge
   int _unread = 0;
   bool _loading = true;
 
@@ -46,8 +49,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final profile = await apiClient.get('/profile/me');
       final data = await apiClient.get('/history');
       final notes = await apiClient.get('/notifications');
+      CommunityProfile? community;
+      try {
+        community = CommunityProfile.fromJson((await apiClient.get('/community/me'))['profile'] as Map<String, dynamic>);
+      } catch (_) {
+        // the header falls back to the real name
+      }
       if (!mounted) return;
       setState(() {
+        _community = community;
         _profile = ProfileData.fromJson(profile);
         _history = (data['history'] as List).map((e) => TravelHistoryEntry.fromJson(e)).toList();
         _unread = notes['unread'] as int? ?? 0;
@@ -228,13 +238,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Center(
                     child: Column(children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: AppColors.navy,
-                        child: Text((user?.firstName.isNotEmpty ?? false) ? user!.firstName.substring(0, 1) : '?', style: const TextStyle(color: Colors.white, fontSize: 28)),
-                      ),
+                      if (_community != null)
+                        AuthorAvatar(author: _community!.author, radius: 40)
+                      else
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: AppColors.navy,
+                          child: Text((user?.firstName.isNotEmpty ?? false) ? user!.firstName.substring(0, 1) : '?', style: const TextStyle(color: Colors.white, fontSize: 28)),
+                        ),
                       const SizedBox(height: 12),
-                      Text('${user?.firstName ?? ''} ${user?.lastName ?? ''}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      if (_community != null)
+                        AuthorName(author: _community!.author, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
+                      else
+                        Text('${user?.firstName ?? ''} ${user?.lastName ?? ''}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       Text('@${user?.username ?? ''}', style: const TextStyle(color: Colors.grey)),
                     ]),
                   ),

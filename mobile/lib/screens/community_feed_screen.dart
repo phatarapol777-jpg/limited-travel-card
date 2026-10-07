@@ -45,6 +45,7 @@ class _FeedListState extends State<FeedList> {
   @override
   void initState() {
     super.initState();
+    communityRefresh.addListener(_load);
     _scroll.addListener(() {
       if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) _loadMore();
     });
@@ -59,6 +60,7 @@ class _FeedListState extends State<FeedList> {
 
   @override
   void dispose() {
+    communityRefresh.removeListener(_load);
     _scroll.dispose();
     super.dispose();
   }

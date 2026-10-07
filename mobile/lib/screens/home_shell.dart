@@ -6,6 +6,7 @@ import 'card_inventory_screen.dart';
 import 'community_screen.dart';
 import 'main_scan_screen.dart';
 import 'map_missions_screen.dart';
+import '../models/community_models.dart';
 import 'post_detail_screen.dart';
 import 'profile_screen.dart';
 
@@ -65,6 +66,7 @@ class HomeShellState extends State<HomeShell> {
 
   void goToTab(int i) {
     setState(() => _index = i);
+    if (i == 2) communityRefresh.value++;
     if (i == 0) _mapKey.currentState?.reload(silent: true);
   }
 

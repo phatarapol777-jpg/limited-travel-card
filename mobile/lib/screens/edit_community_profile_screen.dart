@@ -89,6 +89,7 @@ class _EditCommunityProfileScreenState extends State<EditCommunityProfileScreen>
         'is_badge_visible': _badgeVisible,
         'selected_badge_id': _badgeId,
       });
+      communityRefresh.value++;
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
