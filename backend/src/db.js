@@ -457,6 +457,9 @@ CREATE TABLE IF NOT EXISTS transport_requests (
 CREATE INDEX IF NOT EXISTS idx_transport_requests_user ON transport_requests(user_id, requested_at);
 `);
 
+addColumns('booking_requests', { cancelled_at: 'TEXT' });
+addColumns('transport_requests', { cancelled_at: 'TEXT' });
+
 // ---- community: public profiles, posts with pictures and place tags, reactions, follows, monthly leaderboard ------------------
 addColumns('users', { display_name: 'TEXT', avatar: 'TEXT', cover: 'TEXT', bio: 'TEXT', selected_badge_id: 'TEXT', is_badge_visible: 'INTEGER NOT NULL DEFAULT 1', profile_rev: 'INTEGER NOT NULL DEFAULT 0' });
 addColumns('community_posts', { updated_at: 'TEXT', location_id: 'TEXT' });

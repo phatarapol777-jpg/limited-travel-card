@@ -2,7 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require_login();
-$labels = ['requested' => 'รอดำเนินการ', 'confirmed' => 'ยืนยันแล้ว', 'rejected' => 'ปฏิเสธ'];
+$labels = ['requested' => 'รอดำเนินการ', 'confirmed' => 'ยืนยันแล้ว', 'rejected' => 'ปฏิเสธ', 'cancelled' => 'ผู้ใช้ยกเลิก'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();

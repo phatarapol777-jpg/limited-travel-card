@@ -3,6 +3,7 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import 'mock_payment_screen.dart';
+import 'my_bookings_screen.dart';
 
 String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _hm(String iso) => iso.length >= 16 ? iso.substring(11, 16) : iso;
@@ -30,7 +31,16 @@ Future<void> _sendRequest(BuildContext context, {required String kind, required 
         icon: const Icon(Icons.check_circle, color: AppColors.success, size: 36),
         title: const Text('จองสำเร็จ'),
         content: const Text('บันทึกการจองของคุณแล้ว (ชำระเงินแบบจำลอง) ทีมงานจะติดต่อกลับเพื่อยืนยัน'),
-        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ตกลง'))],
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ตกลง')),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyBookingsScreen()));
+            },
+            child: const Text('ดูการจองของฉัน'),
+          ),
+        ],
       ),
     );
   } on ApiException catch (e) {

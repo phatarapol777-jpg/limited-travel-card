@@ -592,7 +592,7 @@ router.get('/transport-requests', (req, res) => {
 
 router.put('/transport-requests/:id/status', (req, res) => {
   const { status } = req.body || {};
-  if (!['requested', 'confirmed', 'rejected'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
+  if (!['requested', 'confirmed', 'rejected', 'cancelled'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
   const result = db.prepare('UPDATE transport_requests SET status = ? WHERE request_id = ?').run(status, req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'ไม่พบคำขอนี้' });
   res.json({ status });
@@ -600,7 +600,7 @@ router.put('/transport-requests/:id/status', (req, res) => {
 
 router.put('/booking-requests/:id/status', (req, res) => {
   const { status } = req.body || {};
-  if (!['requested', 'confirmed', 'rejected'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
+  if (!['requested', 'confirmed', 'rejected', 'cancelled'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
   const result = db.prepare('UPDATE booking_requests SET status = ? WHERE booking_request_id = ?').run(status, req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'ไม่พบคำขอจองนี้' });
   res.json({ status });

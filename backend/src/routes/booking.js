@@ -229,8 +229,28 @@ router.post('/transport/request', authMiddleware, (req, res) => {
 });
 
 router.get('/transport/requests', authMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT request_id, kind, title, summary_json, price_amount, price_currency, status, requested_at FROM transport_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 100').all(req.user.user_id);
+  const rows = db.prepare('SELECT request_id, kind, title, summary_json, price_amount, price_currency, status, requested_at, cancelled_at FROM transport_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 100').all(req.user.user_id);
   res.json({ requests: rows.map(({ summary_json, ...r }) => ({ ...r, summary: JSON.parse(summary_json) })) });
+});
+
+// ---- cancelling ------------------------------------------------------------------------------------------------------------------
+// A traveler can cancel their own booking while it is waiting or confirmed. The refund is only pretended (the payment page is a demo too).
+const CANCELLABLE = ['requested', 'confirmed'];
+
+router.post('/requests/:id/cancel', authMiddleware, (req, res) => {
+  const row = db.prepare('SELECT user_id, status FROM booking_requests WHERE booking_request_id = ?').get(req.params.id);
+  if (!row || row.user_id !== req.user.user_id) return res.status(404).json({ error: 'ไม่พบการจองนี้' });
+  if (!CANCELLABLE.includes(row.status)) return res.status(409).json({ error: row.status === 'cancelled' ? 'การจองนี้ถูกยกเลิกไปแล้ว' : 'การจองนี้ยกเลิกไม่ได้' });
+  db.prepare("UPDATE booking_requests SET status = 'cancelled', cancelled_at = ? WHERE booking_request_id = ?").run(new Date().toISOString(), req.params.id);
+  res.json({ status: 'cancelled', refund: 'demo' });
+});
+
+router.post('/transport/requests/:id/cancel', authMiddleware, (req, res) => {
+  const row = db.prepare('SELECT user_id, status FROM transport_requests WHERE request_id = ?').get(req.params.id);
+  if (!row || row.user_id !== req.user.user_id) return res.status(404).json({ error: 'ไม่พบการจองนี้' });
+  if (!CANCELLABLE.includes(row.status)) return res.status(409).json({ error: row.status === 'cancelled' ? 'การจองนี้ถูกยกเลิกไปแล้ว' : 'การจองนี้ยกเลิกไม่ได้' });
+  db.prepare("UPDATE transport_requests SET status = 'cancelled', cancelled_at = ? WHERE request_id = ?").run(new Date().toISOString(), req.params.id);
+  res.json({ status: 'cancelled', refund: 'demo' });
 });
 
 module.exports = router;

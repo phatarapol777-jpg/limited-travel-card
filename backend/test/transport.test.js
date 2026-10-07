@@ -156,3 +156,43 @@ test('requests: recorded for the traveler, listed to the admin who can change th
   assert.equal((await s.call('PUT', '/admin/transport-requests/nope/status', { status: 'confirmed' }, adm.token)).status, 404);
   assert.equal((await s.call('GET', '/booking/transport/requests', undefined, user.token)).body.requests.find((r) => r.kind === 'flight').status, 'confirmed');
 });
+
+test('cancelling: only your own booking, only while waiting or confirmed, hotels and flights/cars alike', async () => {
+  const me = await s.register('canceller');
+  const other = await s.register('bystander');
+  const car = await s.call('POST', '/booking/transport/request', { kind: 'car', title: 'Toyota Yaris', price: 1590, summary: { car: { badges: ['Free cancellation'] } } }, me.token);
+  const cancel = (id, token = me.token) => s.call('POST', `/booking/transport/requests/${id}/cancel`, {}, token);
+  assert.equal((await cancel(car.body.request_id, other.token)).status, 404, 'not yours');
+  assert.equal((await cancel('nope')).status, 404);
+  assert.equal((await s.call('POST', `/booking/transport/requests/${car.body.request_id}/cancel`, {})).status, 401);
+  const done = await cancel(car.body.request_id);
+  assert.deepEqual([done.status, done.body.status, done.body.refund], [200, 'cancelled', 'demo']);
+  assert.equal((await cancel(car.body.request_id)).status, 409, 'already cancelled');
+  const listed = (await s.call('GET', '/booking/transport/requests', undefined, me.token)).body.requests[0];
+  assert.deepEqual([listed.status, typeof listed.cancelled_at], ['cancelled', 'string']);
+  assert.equal((await s.call('GET', '/admin/transport-requests', undefined, adm.token)).body.requests.find((r) => r.request_id === car.body.request_id).status, 'cancelled');
+
+  // a rejected request cannot be cancelled; a confirmed one can
+  const f = await s.call('POST', '/booking/transport/request', { kind: 'flight', title: 'BKK → CNX', price: 1800 }, me.token);
+  await s.call('PUT', `/admin/transport-requests/${f.body.request_id}/status`, { status: 'rejected' }, adm.token);
+  assert.equal((await cancel(f.body.request_id)).status, 409);
+  await s.call('PUT', `/admin/transport-requests/${f.body.request_id}/status`, { status: 'confirmed' }, adm.token);
+  assert.equal((await cancel(f.body.request_id)).status, 200);
+
+  // hotel requests
+  const db = s.sql();
+  db.pragma('foreign_keys = OFF');
+  const now = new Date().toISOString();
+  db.prepare("INSERT INTO hotels (hotel_id, external_hotel_id, name, city_code, location_id, cached_at) VALUES ('htc', 'extc', 'โรงแรมยกเลิก', 'X', ?, ?)").run(locId, now);
+  db.prepare("INSERT INTO hotel_offers (offer_id, search_id, hotel_id, check_in_date, check_out_date, cached_at) VALUES ('ofc', 'srchc', 'htc', '2026-12-01', '2026-12-02', ?)").run(now);
+  db.prepare("INSERT INTO booking_requests (booking_request_id, user_id, offer_id, guest_name, status, requested_at) VALUES ('brc', ?, 'ofc', 'g', 'requested', ?)").run(me.id, now);
+  db.close();
+  const hotelCancel = (token = me.token) => s.call('POST', '/booking/requests/brc/cancel', {}, token);
+  assert.equal((await hotelCancel(other.token)).status, 404);
+  assert.equal((await hotelCancel()).status, 200);
+  assert.equal((await hotelCancel()).status, 409);
+  const mine = (await s.call('GET', '/booking/requests', undefined, me.token)).body.requests.find((r) => r.booking_request_id === 'brc');
+  assert.equal(mine.status, 'cancelled');
+  assert.equal((await s.call('GET', '/admin/booking-requests', undefined, adm.token)).body.requests.find((r) => r.booking_request_id === 'brc').status, 'cancelled');
+  assert.equal((await s.call('PUT', '/admin/booking-requests/brc/status', { status: 'cancelled' }, adm.token)).status, 200);
+});

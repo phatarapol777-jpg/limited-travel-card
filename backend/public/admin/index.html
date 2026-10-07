@@ -188,7 +188,7 @@ async function renderPanel() {
         const sel = el('select', { onchange: async () => {
           try { await api(path, { method: 'PUT', body: JSON.stringify({ status: sel.value }) }); }
           catch (e) { alert(e.message); renderPanel(); }
-        } }, [['requested', 'รอดำเนินการ'], ['confirmed', 'ยืนยันแล้ว'], ['rejected', 'ปฏิเสธ']].map(([v, label]) => {
+        } }, [['requested', 'รอดำเนินการ'], ['confirmed', 'ยืนยันแล้ว'], ['rejected', 'ปฏิเสธ'], ['cancelled', 'ผู้ใช้ยกเลิก']].map(([v, label]) => {
           const o = el('option', { value: v }, label); if (r.status === v) o.selected = true; return o;
         }));
         return sel;

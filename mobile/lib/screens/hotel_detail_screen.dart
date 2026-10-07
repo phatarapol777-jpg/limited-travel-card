@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import 'mock_payment_screen.dart';
+import 'my_bookings_screen.dart';
 
 class HotelDetailScreen extends StatefulWidget {
   final HotelOffer offer;
@@ -109,7 +110,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('จอง "${widget.offer.hotelName}" สำเร็จ (ชำระเงินแบบจำลอง)')));
-      Navigator.of(context).pop();
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const MyBookingsScreen()));
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
