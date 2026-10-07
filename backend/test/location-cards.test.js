@@ -80,3 +80,14 @@ test('validation: bad image, long story, bad limit, limit below what was already
 test('only admins can change location cards', async () => {
   assert.equal((await s.call('PUT', `/admin/locations/${locId}`, body({ card_image: TINY_JPEG }), alice.token)).status, 403);
 });
+
+test('coordinates must be real latitude / longitude values (a missing decimal point is rejected)', async () => {
+  for (const bad of [{ longitude: 10328192519501052 }, { longitude: 'abc' }, { latitude: 200 }, { latitude: -91 }, { longitude: -181 }, { latitude: null }]) {
+    const r = await s.call('POST', '/admin/locations', body({ name: 'พิกัดผิด', ...bad }), adm.token);
+    assert.equal(r.status, 400, JSON.stringify(bad));
+  }
+  const ok = await s.call('POST', '/admin/locations', body({ name: 'พิกัดถูก', latitude: '16.2058', longitude: '103.2819' }), adm.token);
+  assert.equal(ok.status, 201);
+  assert.equal((await s.call('PUT', `/admin/locations/${locId}`, body({ name: 'มีรูป', longitude: 10328192519501052 }), adm.token)).status, 400);
+});
+

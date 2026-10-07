@@ -60,9 +60,14 @@ function applyCardExtras(templateId, extras) {
 
 function validateLocationPayload(body) {
   const { name, province, latitude, longitude, mission_title, card_name } = body || {};
-  if (!name || !province || latitude === undefined || longitude === undefined || !mission_title || !card_name) {
+  const blank = (v) => v === undefined || v === null || v === '';
+  if (!name || !province || blank(latitude) || blank(longitude) || !mission_title || !card_name) {
     return 'กรุณากรอกข้อมูลให้ครบ: ชื่อสถานที่, จังหวัด, พิกัด, ชื่อภารกิจ, ชื่อการ์ด';
   }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return 'ละติจูดต้องอยู่ระหว่าง -90 ถึง 90 (ประเทศไทยประมาณ 5 ถึง 21)';
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return 'ลองจิจูดต้องอยู่ระหว่าง -180 ถึง 180 (ประเทศไทยประมาณ 97 ถึง 106) ตรวจดูว่าไม่ได้ลืมจุดทศนิยม';
   return null;
 }
 

@@ -250,7 +250,10 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
                         controller: _latitude,
                         decoration: const InputDecoration(labelText: 'ละติจูด'),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                        validator: (v) => double.tryParse(v ?? '') == null ? 'ตัวเลขไม่ถูกต้อง' : null,
+                        validator: (v) {
+                          final n = double.tryParse(v ?? '');
+                          return (n == null || n < -90 || n > 90) ? 'ละติจูดต้องอยู่ระหว่าง -90 ถึง 90' : null;
+                        },
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -259,7 +262,10 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
                         controller: _longitude,
                         decoration: const InputDecoration(labelText: 'ลองจิจูด'),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                        validator: (v) => double.tryParse(v ?? '') == null ? 'ตัวเลขไม่ถูกต้อง' : null,
+                        validator: (v) {
+                          final n = double.tryParse(v ?? '');
+                          return (n == null || n < -180 || n > 180) ? 'ลองจิจูดต้องอยู่ระหว่าง -180 ถึง 180 (ไทยประมาณ 97-106)' : null;
+                        },
                       ),
                     ),
                   ],

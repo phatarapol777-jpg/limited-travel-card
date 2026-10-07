@@ -20,11 +20,12 @@ class HomeShellState extends State<HomeShell> {
   int _unread = 0;
   Timer? _poll;
 
-  final _screens = const [
-    MapMissionsScreen(),
-    CardInventoryScreen(),
-    CommunityScreen(),
-    ProfileScreen(),
+  final _mapKey = GlobalKey<MapMissionsScreenState>();
+  late final List<Widget> _screens = [
+    MapMissionsScreen(key: _mapKey),
+    const CardInventoryScreen(),
+    const CommunityScreen(),
+    const ProfileScreen(),
   ];
 
   @override
@@ -49,7 +50,10 @@ class HomeShellState extends State<HomeShell> {
     }
   }
 
-  void goToTab(int i) => setState(() => _index = i);
+  void goToTab(int i) {
+    setState(() => _index = i);
+    if (i == 0) _mapKey.currentState?.reload(silent: true);
+  }
 
   Future<void> _scan() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MainScanScreen()));
@@ -93,7 +97,7 @@ class HomeShellState extends State<HomeShell> {
     final selected = _index == i;
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _index = i),
+        onTap: () => goToTab(i),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

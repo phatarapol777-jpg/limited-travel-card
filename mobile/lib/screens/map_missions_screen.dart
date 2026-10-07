@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
@@ -13,10 +14,12 @@ class MapMissionsScreen extends StatefulWidget {
   const MapMissionsScreen({super.key});
 
   @override
-  State<MapMissionsScreen> createState() => _MapMissionsScreenState();
+  State<MapMissionsScreen> createState() => MapMissionsScreenState();
 }
 
-class _MapMissionsScreenState extends State<MapMissionsScreen> {
+class MapMissionsScreenState extends State<MapMissionsScreen> {
+  final MapController _mapController = MapController();
+  Timer? _refreshTimer;
   List<TravelLocation> _locations = [];
   List<Mission> _missions = [];
   List<Shop> _shops = [];
@@ -26,14 +29,25 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    reload();
+    // places added by an admin appear without reopening the app
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) => reload(silent: true));
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Reloads places, missions and shops. [silent] keeps the current screen instead of showing the spinner.
+  Future<void> reload({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final locData = await apiClient.get('/catalog/locations');
       final missionData = await apiClient.get('/catalog/missions');
@@ -45,11 +59,18 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
         _loading = false;
       });
     } catch (e) {
+      if (silent) return;
       setState(() {
         _error = 'โหลดข้อมูลไม่สำเร็จ: $e';
         _loading = false;
       });
     }
+  }
+
+  /// Centre the map on a place and open its details (works even when the marker is outside the visible area).
+  void _goTo(TravelLocation loc) {
+    _mapController.move(ll.LatLng(loc.latitude, loc.longitude), 10);
+    _openLocationSheet(loc);
   }
 
   void _openLocationSheet(TravelLocation loc) {
@@ -185,7 +206,10 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Travel Map & Missions')),
+      appBar: AppBar(
+        title: const Text('Travel Map & Missions'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), tooltip: 'โหลดสถานที่ใหม่', onPressed: () => reload())],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -195,6 +219,7 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
                     Expanded(
                       flex: 3,
                       child: FlutterMap(
+                        mapController: _mapController,
                         options: const MapOptions(
                           initialCenter: ll.LatLng(15.5, 101.0),
                           initialZoom: 5.4,
@@ -233,6 +258,24 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
                       child: ListView(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         children: [
+                          _SectionHeader(title: 'สถานที่ทั้งหมด (${_locations.length})'),
+                          SizedBox(
+                            height: 44,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              children: _locations
+                                  .map((l) => Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: ActionChip(
+                                          avatar: Icon(iconFor(l.icon), size: 16, color: AppColors.navy),
+                                          label: Text(l.name),
+                                          onPressed: () => _goTo(l),
+                                        ),
+                                      ))
+                                  .toList(),
+                            ),
+                          ),
                           _SectionHeader(title: 'Booking services'),
                           SizedBox(
                             height: 76,
