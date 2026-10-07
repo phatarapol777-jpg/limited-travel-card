@@ -7,7 +7,7 @@ function sendDataUrl(res, dataUrl) {
   const m = /^data:(image\/jpeg);base64,(.+)$/.exec(dataUrl || '');
   if (!m) return res.status(404).json({ error: 'ไม่พบภาพ' });
   res.set('Content-Type', m[1]);
-  res.set('Cache-Control', 'public, max-age=3600');
+  res.set('Cache-Control', 'public, max-age=60'); // short, so a replaced picture shows up within a minute
   res.set('X-Content-Type-Options', 'nosniff');
   res.send(Buffer.from(m[2], 'base64'));
 }

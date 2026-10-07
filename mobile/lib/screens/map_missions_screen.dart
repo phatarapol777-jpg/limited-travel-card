@@ -92,7 +92,11 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
             children: [
               Row(
                 children: [
-                  CircleAvatar(backgroundColor: AppColors.navy, child: Icon(iconFor(loc.icon), color: Colors.white)),
+                  CircleAvatar(
+                    backgroundColor: AppColors.navy,
+                    backgroundImage: loc.pinImageUrl != null ? NetworkImage(loc.pinImageUrl!) : null,
+                    child: loc.pinImageUrl != null ? null : Icon(iconFor(loc.icon), color: Colors.white),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -233,18 +237,26 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                             markers: _locations
                                 .map((loc) => Marker(
                                       point: ll.LatLng(loc.latitude, loc.longitude),
-                                      width: 44,
-                                      height: 44,
+                                      width: 54,
+                                      height: 54,
                                       child: GestureDetector(
                                         onTap: () => _openLocationSheet(loc),
                                         child: Container(
                                           decoration: BoxDecoration(
                                             color: AppColors.navy,
                                             shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 2),
-                                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                                            border: Border.all(color: Colors.white, width: 2.5),
+                                            boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 5)],
                                           ),
-                                          child: Icon(iconFor(loc.icon), color: AppColors.gold, size: 20),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: loc.pinImageUrl != null
+                                              ? Image.network(
+                                                  loc.pinImageUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) => Icon(iconFor(loc.icon), color: AppColors.gold, size: 22),
+                                                  loadingBuilder: (c, child, p) => p == null ? child : Icon(iconFor(loc.icon), color: AppColors.gold, size: 22),
+                                                )
+                                              : Icon(iconFor(loc.icon), color: AppColors.gold, size: 22),
                                         ),
                                       ),
                                     ))

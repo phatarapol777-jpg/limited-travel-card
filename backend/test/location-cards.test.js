@@ -91,3 +91,22 @@ test('coordinates must be real latitude / longitude values (a missing decimal po
   assert.equal((await s.call('PUT', `/admin/locations/${locId}`, body({ name: 'มีรูป', longitude: 10328192519501052 }), adm.token)).status, 400);
 });
 
+test('the public place list says which places have a picture, without any image data', async () => {
+  await s.call('PUT', `/admin/locations/${locId}`, body({ name: 'มีรูป', card_image: TINY_JPEG }), adm.token);
+  const raw = await s.call('GET', '/catalog/locations');
+  assert.equal(JSON.stringify(raw.body).includes('base64'), false);
+  const withPic = raw.body.locations.find((l) => l.location_id === locId);
+  assert.equal(withPic.card_has_image, true);
+  assert.equal(withPic.card_template_id, tplId);
+  assert.ok(withPic.card_image_rev > 0);
+  const without = raw.body.locations.find((l) => l.name === 'ร้านทดสอบ');
+  assert.equal(without.card_has_image, false);
+  const before = withPic.card_image_rev;
+  // a different (bigger) picture changes the revision, which busts the cache
+  const bigger = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(900, 7), Buffer.from([0xff, 0xd9])]).toString('base64')}`;
+  await s.call('PUT', `/admin/locations/${locId}`, body({ name: 'มีรูป', card_image: bigger }), adm.token);
+  const after = (await s.call('GET', '/catalog/locations')).body.locations.find((l) => l.location_id === locId).card_image_rev;
+  assert.notEqual(after, before);
+  assert.equal(raw.body.locations.length, new Set(raw.body.locations.map((l) => l.location_id)).size, 'one row per place');
+});
+

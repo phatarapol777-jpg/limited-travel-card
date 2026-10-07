@@ -54,6 +54,9 @@ class TravelLocation {
   final double longitude;
   final String province;
   final String icon;
+  final String? cardTemplateId;
+  final bool cardHasImage;
+  final int cardImageRev;
 
   TravelLocation({
     required this.locationId,
@@ -63,7 +66,13 @@ class TravelLocation {
     required this.longitude,
     required this.province,
     required this.icon,
+    this.cardTemplateId,
+    this.cardHasImage = false,
+    this.cardImageRev = 0,
   });
+
+  /// The picture the admin uploaded for this place's card (shown on the map pin), or null.
+  String? get pinImageUrl => (cardHasImage && cardTemplateId != null) ? '$apiBaseUrl/media/card/$cardTemplateId?v=$cardImageRev' : null;
 
   factory TravelLocation.fromJson(Map<String, dynamic> j) => TravelLocation(
         locationId: j['location_id'],
@@ -73,6 +82,9 @@ class TravelLocation {
         longitude: (j['longitude'] as num).toDouble(),
         province: j['province'],
         icon: j['icon'] ?? 'place',
+        cardTemplateId: j['card_template_id'],
+        cardHasImage: j['card_has_image'] == true,
+        cardImageRev: (j['card_image_rev'] as num?)?.toInt() ?? 0,
       );
 }
 

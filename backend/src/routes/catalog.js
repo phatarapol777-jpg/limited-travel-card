@@ -5,7 +5,13 @@ const { authMiddleware } = require('../util');
 const router = express.Router();
 
 router.get('/locations', (req, res) => {
-  const locations = db.prepare('SELECT * FROM locations ORDER BY name').all();
+  // card_image_rev changes whenever the picture is replaced, so clients can cache it by URL
+  const rows = db.prepare(`SELECT l.*, t.template_id AS card_template_id, length(t.image) AS card_image_rev
+    FROM locations l
+    LEFT JOIN missions m ON m.location_id = l.location_id
+    LEFT JOIN card_templates t ON t.mission_id = m.mission_id
+    GROUP BY l.location_id ORDER BY l.name`).all();
+  const locations = rows.map((r) => ({ ...r, card_has_image: !!r.card_image_rev, card_image_rev: r.card_image_rev || 0 }));
   res.json({ locations });
 });
 
