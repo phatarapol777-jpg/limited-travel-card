@@ -441,4 +441,85 @@ CREATE INDEX IF NOT EXISTS idx_privileges_template ON merchant_privileges(templa
 CREATE INDEX IF NOT EXISTS idx_privileges_merchant ON merchant_privileges(merchant_id);
 `);
 
+// ---- community: public profiles, posts with pictures and place tags, reactions, follows, monthly leaderboard ------------------
+addColumns('users', { display_name: 'TEXT', avatar: 'TEXT', cover: 'TEXT', bio: 'TEXT', selected_badge_id: 'TEXT', is_badge_visible: 'INTEGER NOT NULL DEFAULT 1', profile_rev: 'INTEGER NOT NULL DEFAULT 0' });
+addColumns('community_posts', { updated_at: 'TEXT', location_id: 'TEXT' });
+addColumns('community_comments', { image: 'TEXT', updated_at: 'TEXT' });
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS post_images (
+  image_id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL REFERENCES community_posts(post_id),
+  position INTEGER NOT NULL,
+  image TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_post_images ON post_images(post_id, position);
+
+CREATE TABLE IF NOT EXISTS post_hashtags (
+  post_id TEXT NOT NULL REFERENCES community_posts(post_id),
+  tag TEXT NOT NULL,
+  PRIMARY KEY (post_id, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_post_hashtags_tag ON post_hashtags(tag);
+
+CREATE TABLE IF NOT EXISTS post_reactions (
+  post_id TEXT NOT NULL REFERENCES community_posts(post_id),
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  type TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_post_reactions_post ON post_reactions(post_id);
+
+CREATE TABLE IF NOT EXISTS follows (
+  follower_user_id TEXT NOT NULL REFERENCES users(user_id),
+  following_user_id TEXT NOT NULL REFERENCES users(user_id),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (follower_user_id, following_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_user_id);
+
+CREATE TABLE IF NOT EXISTS post_reports (
+  post_id TEXT NOT NULL REFERENCES community_posts(post_id),
+  reporter_user_id TEXT NOT NULL REFERENCES users(user_id),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (post_id, reporter_user_id)
+);
+
+-- A month is finalised exactly once (lazily, the first time anyone asks after it ended); its ranking is then fixed.
+CREATE TABLE IF NOT EXISTS community_months (
+  year_month TEXT PRIMARY KEY,
+  finalized_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS checkin_monthly_stats (
+  year_month TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  unique_count INTEGER NOT NULL,
+  rank_position INTEGER NOT NULL,
+  PRIMARY KEY (year_month, user_id)
+);
+CREATE TABLE IF NOT EXISTS user_badges (
+  badge_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  awarded_month TEXT NOT NULL,
+  rank_position INTEGER NOT NULL,
+  icon TEXT NOT NULL,
+  title TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (user_id, awarded_month)
+);
+CREATE INDEX IF NOT EXISTS idx_community_posts_user ON community_posts(user_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_community_posts_time ON community_posts(status, timestamp);
+CREATE INDEX IF NOT EXISTS idx_community_comments_post ON community_comments(post_id, timestamp);
+`);
+
+// Old "likes" become LIKE reactions, once (a later un-like must not bring them back on the next boot).
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'migrated_likes_to_reactions'").get()) {
+  db.transaction(() => {
+    db.prepare("INSERT OR IGNORE INTO post_reactions (post_id, user_id, type, created_at) SELECT post_id, user_id, 'LIKE', ? FROM community_likes").run(new Date().toISOString());
+    db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('migrated_likes_to_reactions', 'done', ?)").run(new Date().toISOString());
+  })();
+}
+
 module.exports = db;

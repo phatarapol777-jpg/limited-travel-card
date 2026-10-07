@@ -280,5 +280,5 @@ function migrateLegacyShops() {
 module.exports = {
   migrateLegacyShops, CATEGORIES, STATUSES, DAYS, MAX_GALLERY, MAX_ITEMS, MAX_PRIVILEGES, MAX_SHOPS_PER_USER, MAX_PENDING_PER_USER, MAX_COVER_CHARS, MAX_SMALL_IMAGE_CHARS,
   THAI_BOUNDS, validateHours, isOpenNow, todayHoursText, parseMerchantForm, applyForm, liveForm, currentForm, publicTemplateIds,
-  PUBLIC_COLUMNS, privilegeValid, lightView,
+  PUBLIC_COLUMNS, privilegeValid, lightView, imageProblem,
 };

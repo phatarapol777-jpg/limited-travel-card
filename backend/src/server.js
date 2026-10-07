@@ -12,6 +12,7 @@ async function main() {
   require('./seed')();
   require('./services/kioskService').ensureKioskCodes();
   require('./services/merchantService').migrateLegacyShops();
+  require('./services/communityService').backfillHashtags();
   backup.start(db);
   require('./services/maintenance').start();
   const { expireTrades } = require('./services/tradeService');
@@ -36,6 +37,7 @@ async function main() {
   app.use('/api/catalog', require('./routes/catalog'));
   app.use('/api/cards', require('./routes/cards'));
   app.use('/api/community', require('./routes/community'));
+  app.use('/api/community', require('./routes/communityUsers'));
   app.use('/api/history', require('./routes/history'));
   app.use('/api/booking', require('./routes/booking'));
   app.use('/api/kiosk', require('./routes/kiosk'));

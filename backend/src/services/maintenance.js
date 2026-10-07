@@ -18,6 +18,8 @@ function pruneSessions(now = Date.now()) {
 function runAll() {
   const photos = purgeOldFacePhotos();
   const sessions = pruneSessions();
+  const months = require('./leaderboard').finalizePastMonths();
+  if (months.length) console.log(`[maintenance] closed community months: ${months.join(', ')}`);
   if (photos || sessions) console.log(`[maintenance] removed ${photos} old face photos and ${sessions} expired sessions`);
 }
 

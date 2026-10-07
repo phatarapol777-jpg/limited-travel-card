@@ -132,7 +132,7 @@ test('settings: admin-only, validated, and stored', async () => {
   const u = await s.register('settinguser');
   assert.equal((await s.call('GET', '/admin/settings', undefined, u.token)).status, 403);
   const list = (await s.call('GET', '/admin/settings', undefined, adm.token)).body.settings;
-  assert.deepEqual(list.map((x) => x.key).sort(), ['env_check', 'kiosk_geo_radius_m', 'quest_geo_check', 'quest_geo_radius_m']);
+  assert.deepEqual(list.map((x) => x.key).sort(), ['community_badge_top_n', 'community_tag_verify', 'env_check', 'kiosk_geo_radius_m', 'quest_geo_check', 'quest_geo_radius_m']);
   assert.equal(list.find((x) => x.key === 'quest_geo_radius_m').value, 1000);
 
   assert.equal((await s.call('PUT', '/admin/settings', { quest_geo_check: false, quest_geo_radius_m: 750 }, adm.token)).status, 200);

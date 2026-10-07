@@ -24,6 +24,13 @@ const deleteAccount = db.transaction((userId) => {
   db.prepare('DELETE FROM physical_order_intents WHERE user_id = ?').run(userId);
   db.prepare("UPDATE quests SET status = 'closed' WHERE creator_user_id = ? AND status IN ('pending', 'approved')").run(userId);
   db.prepare("UPDATE community_posts SET status = 'hidden' WHERE user_id = ?").run(userId);
+  db.prepare('DELETE FROM post_images WHERE post_id IN (SELECT post_id FROM community_posts WHERE user_id = ?)').run(userId);
+  db.prepare('DELETE FROM community_comments WHERE user_id = ?').run(userId);
+  db.prepare('DELETE FROM post_reactions WHERE user_id = ?').run(userId);
+  db.prepare('DELETE FROM post_reports WHERE reporter_user_id = ?').run(userId);
+  db.prepare('DELETE FROM follows WHERE follower_user_id = ? OR following_user_id = ?').run(userId, userId);
+  db.prepare('DELETE FROM user_badges WHERE user_id = ?').run(userId);
+  db.prepare('DELETE FROM checkin_monthly_stats WHERE user_id = ?').run(userId);
   if (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'merchants'").get()) {
     db.prepare("UPDATE merchants SET approval_status = 'SUSPENDED' WHERE owner_user_id = ? AND approval_status != 'REJECTED'").run(userId);
   }
@@ -31,7 +38,7 @@ const deleteAccount = db.transaction((userId) => {
   const tag = crypto.randomBytes(5).toString('hex');
   const { hash, salt } = hashPassword(crypto.randomBytes(32).toString('hex')); // nobody knows this password
   db.prepare(`UPDATE users SET username = ?, first_name = 'ผู้ใช้ที่ลบบัญชี', last_name = '-', email = ?, phone = NULL,
-      password_hash = ?, password_salt = ?, face_photo = NULL, face_descriptor = NULL, face_data = NULL, google_sub = NULL
+      password_hash = ?, password_salt = ?, display_name = NULL, avatar = NULL, cover = NULL, bio = NULL, selected_badge_id = NULL, face_photo = NULL, face_descriptor = NULL, face_data = NULL, google_sub = NULL
     WHERE user_id = ?`).run(`deleted-${tag}`, `deleted-${tag}@invalid.local`, hash, salt, userId);
   return true;
 });

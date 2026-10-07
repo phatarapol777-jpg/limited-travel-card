@@ -42,4 +42,25 @@ router.get('/merchant-item/:itemId', (req, res) => {
   sendDataUrl(res, r && r.image);
 });
 
+// Community pictures: public only while the post is visible. Avatars and covers belong to the profile (a deleted account has none).
+router.get('/post-image/:imageId', (req, res) => {
+  const r = db.prepare(`SELECT i.image FROM post_images i JOIN community_posts p ON p.post_id = i.post_id WHERE i.image_id = ? AND p.status = 'visible'`).get(req.params.imageId);
+  sendDataUrl(res, r && r.image);
+});
+
+router.get('/comment-image/:commentId', (req, res) => {
+  const r = db.prepare(`SELECT c.image FROM community_comments c JOIN community_posts p ON p.post_id = c.post_id WHERE c.comment_id = ? AND p.status = 'visible'`).get(req.params.commentId);
+  sendDataUrl(res, r && r.image);
+});
+
+router.get('/avatar/:username', (req, res) => {
+  const u = db.prepare("SELECT avatar FROM users WHERE username = ? AND username NOT LIKE 'deleted-%'").get(req.params.username);
+  sendDataUrl(res, u && u.avatar);
+});
+
+router.get('/cover/:username', (req, res) => {
+  const u = db.prepare("SELECT cover FROM users WHERE username = ? AND username NOT LIKE 'deleted-%'").get(req.params.username);
+  sendDataUrl(res, u && u.cover);
+});
+
 module.exports = router;

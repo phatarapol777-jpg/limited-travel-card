@@ -211,6 +211,15 @@ router.get('/stats', (req, res) => {
         designs: count("SELECT COUNT(*) AS c FROM card_templates WHERE card_type = 'PHYSICAL_BLIND_PACK'"),
         order_interest: count('SELECT COUNT(*) AS c FROM physical_order_intents'),
       },
+      community: {
+        posts: count("SELECT COUNT(*) AS c FROM community_posts WHERE status = 'visible'"),
+        hidden_posts: count("SELECT COUNT(*) AS c FROM community_posts WHERE status = 'hidden'"),
+        comments: count('SELECT COUNT(*) AS c FROM community_comments'),
+        reactions: count('SELECT COUNT(*) AS c FROM post_reactions'),
+        follows: count('SELECT COUNT(*) AS c FROM follows'),
+        reported_posts: count('SELECT COUNT(DISTINCT post_id) AS c FROM post_reports'),
+        badges_awarded: count('SELECT COUNT(*) AS c FROM user_badges'),
+      },
       cards_voided: count("SELECT COUNT(*) AS c FROM all_cards WHERE activation_status = 'VOIDED'"),
     },
   });
@@ -529,11 +538,28 @@ router.post('/merchants/:id/unsuspend', (req, res) => {
 
 // ---- community moderation ----------------------------------------------------------------------------------------------
 router.get('/community/posts', (req, res) => {
-  const rows = db.prepare(`SELECT p.post_id, p.content, p.status, p.timestamp, u.username,
-      (SELECT COUNT(*) FROM community_likes l WHERE l.post_id = p.post_id) AS likes,
-      (SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.post_id) AS comments
-    FROM community_posts p JOIN users u ON u.user_id = p.user_id ORDER BY p.timestamp DESC LIMIT 100`).all();
+  const reportedOnly = req.query.reported === '1';
+  const rows = db.prepare(`SELECT p.post_id, p.content, p.status, p.timestamp, u.username, l.name AS location_name,
+      (SELECT COUNT(*) FROM post_reactions r WHERE r.post_id = p.post_id) AS likes,
+      (SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.post_id) AS comments,
+      (SELECT COUNT(*) FROM post_images i WHERE i.post_id = p.post_id) AS images,
+      (SELECT COUNT(*) FROM post_reports x WHERE x.post_id = p.post_id) AS reports
+    FROM community_posts p JOIN users u ON u.user_id = p.user_id LEFT JOIN locations l ON l.location_id = p.location_id
+    ${reportedOnly ? 'WHERE (SELECT COUNT(*) FROM post_reports x WHERE x.post_id = p.post_id) > 0' : ''}
+    ORDER BY ${reportedOnly ? 'reports DESC,' : ''} p.timestamp DESC LIMIT 100`).all();
   res.json({ posts: rows });
+});
+
+router.get('/community/posts/:id/reports', (req, res) => {
+  const rows = db.prepare(`SELECT x.reason, x.created_at, u.username AS reporter FROM post_reports x JOIN users u ON u.user_id = x.reporter_user_id
+    WHERE x.post_id = ? ORDER BY x.created_at DESC`).all(req.params.id);
+  res.json({ reports: rows });
+});
+
+// Picture of a post for the moderation list (admins see hidden posts too).
+router.get('/community/posts/:id/images', (req, res) => {
+  const rows = db.prepare('SELECT image FROM post_images WHERE post_id = ? ORDER BY position').all(req.params.id);
+  res.json({ images: rows.map((r) => r.image) });
 });
 
 router.put('/community/posts/:id', (req, res) => {

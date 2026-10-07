@@ -18,6 +18,16 @@ const DEFINITIONS = {
     label: 'ตรวจ GPS ตอนสแกน QR ภารกิจ (ต้องอยู่ใกล้สถานที่)',
     default: () => String(process.env.QUEST_GEO_CHECK || 'on').toLowerCase() !== 'off',
   },
+  community_tag_verify: {
+    type: 'bool',
+    label: 'นับสถานที่ที่แท็กในโพสต์เข้าอันดับประจำเดือน เฉพาะที่ผู้ใช้เคยเช็กอินจริงหรือมีการ์ดสถานที่นั้น (กันการแท็กมั่ว)',
+    default: () => String(process.env.COMMUNITY_TAG_VERIFY || 'off').toLowerCase() === 'on',
+  },
+  community_badge_top_n: {
+    type: 'number', min: 1, max: 10,
+    label: 'จำนวนอันดับสูงสุดที่ได้รับตราสัญลักษณ์ประจำเดือน',
+    default: () => parseInt(process.env.COMMUNITY_BADGE_TOP_N, 10) || 3,
+  },
   quest_geo_radius_m: {
     type: 'number', min: 100, max: 20000,
     label: 'รัศมีรอบสถานที่สำหรับสแกนภารกิจ (เมตร)',
