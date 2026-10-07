@@ -2,12 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import '../models/merchant_models.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
 import '../widgets/location_quests.dart';
 import '../widgets/map_layers.dart';
+import '../widgets/shop_detail.dart';
 import 'booking_screen.dart';
 import 'scan_kiosk_screen.dart';
 
@@ -28,7 +30,9 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
   Timer? _refreshTimer;
   List<TravelLocation> _locations = [];
   List<Mission> _missions = [];
-  List<Shop> _shops = [];
+  List<ShopPin> _shops = [];
+  String? _shopCategory;
+  bool _perksOnly = false;
   bool _loading = true;
   String? _error;
 
@@ -49,6 +53,8 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
     super.dispose();
   }
 
+  List<ShopPin> get _visibleShops => _shops.where((s) => (_shopCategory == null || s.category == _shopCategory) && (!_perksOnly || s.hasPrivilege)).toList();
+
   /// Reloads places, missions and shops. [silent] keeps the current screen instead of showing the spinner.
   Future<void> reload({bool silent = false}) async {
     if (!silent) {
@@ -60,7 +66,7 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
     try {
       final locData = await apiClient.get('/catalog/locations');
       final missionData = await apiClient.get('/catalog/missions');
-      final shopData = await apiClient.get('/catalog/shops');
+      final shopData = await apiClient.get('/merchants');
       setState(() {
         _locations = (locData['locations'] as List)
             .map((e) => TravelLocation.fromJson(e))
@@ -69,7 +75,7 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
             .map((e) => Mission.fromJson(e))
             .toList();
         _shops = (shopData['shops'] as List)
-            .map((e) => Shop.fromJson(e))
+            .map((e) => ShopPin.fromJson(e))
             .toList();
         _loading = false;
       });
@@ -92,7 +98,7 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
     final missionsHere = _missions
         .where((m) => m.locationId == loc.locationId)
         .toList();
-    final shopsHere = _shops.where((s) => s.locationName == loc.name).toList();
+    final shopsHere = _shops.where((s) => s.nearbyLocationId == loc.locationId).toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -214,15 +220,11 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                 ...shopsHere.map(
                   (s) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(iconFor(s.icon), color: AppColors.gold),
-                    title: Text(s.shopName),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.star, size: 16, color: Colors.amber),
-                        Text(' ${s.rating}'),
-                      ],
-                    ),
+                    leading: CircleAvatar(radius: 18, backgroundColor: s.cat.color, child: Icon(s.cat.icon, size: 18, color: Colors.white)),
+                    title: Text(s.nameTh),
+                    subtitle: Text('${s.cat.label} · ${s.openNow ? 'เปิดอยู่' : 'ปิดอยู่'}'),
+                    trailing: s.hasPrivilege ? const Icon(Icons.card_giftcard, size: 20, color: AppColors.gold) : null,
+                    onTap: () => showShopDetail(context, s),
                   ),
                 ),
               ],
@@ -378,6 +380,16 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                                   )
                                   .toList(),
                             ),
+                            MarkerLayer(
+                              markers: _visibleShops
+                                  .map((s) => Marker(
+                                        point: ll.LatLng(s.latitude, s.longitude),
+                                        width: 44,
+                                        height: 44,
+                                        child: GestureDetector(onTap: () => showShopDetail(context, s), child: _ShopMarker(shop: s)),
+                                      ))
+                                  .toList(),
+                            ),
                           ],
                         ),
                       ),
@@ -481,16 +493,53 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                           ],
                         ),
                       ),
-                      _SectionHeader(title: 'Partner shops'),
+                      _SectionHeader(title: 'ร้านค้าพันธมิตร (${_visibleShops.length})'),
                       SizedBox(
-                        height: 84,
+                        height: 44,
                         child: ListView(
                           scrollDirection: Axis.horizontal,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          children: _shops
-                              .map((s) => _ShopCard(shop: s))
-                              .toList(),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilterChip(
+                                avatar: const Icon(Icons.card_giftcard, size: 16, color: AppColors.gold),
+                                label: const Text('มีสิทธิประโยชน์'),
+                                selected: _perksOnly,
+                                onSelected: (v) => setState(() => _perksOnly = v),
+                              ),
+                            ),
+                            ...shopCategories.map(
+                              (c) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: FilterChip(
+                                  avatar: Icon(c.icon, size: 16, color: c.color),
+                                  label: Text(c.label),
+                                  selected: _shopCategory == c.id,
+                                  onSelected: (v) => setState(() => _shopCategory = v ? c.id : null),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                      ),
+                      SizedBox(
+                        height: 96,
+                        child: _visibleShops.isEmpty
+                            ? const Center(child: Text('ยังไม่มีร้านค้าในหมวดนี้', style: TextStyle(color: Colors.grey)))
+                            : ListView(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                children: _visibleShops
+                                    .map((s) => _ShopCard(
+                                          shop: s,
+                                          onTap: () {
+                                            _mapController.move(ll.LatLng(s.latitude, s.longitude), 15);
+                                            showShopDetail(context, s);
+                                          },
+                                        ))
+                                    .toList(),
+                              ),
                       ),
                     ],
                   ),
@@ -558,48 +607,73 @@ class _ExternalServiceCard extends StatelessWidget {
   }
 }
 
-class _ShopCard extends StatelessWidget {
-  final Shop shop;
-  const _ShopCard({required this.shop});
+class _ShopMarker extends StatelessWidget {
+  final ShopPin shop;
+  const _ShopMarker({required this.shop});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      margin: const EdgeInsets.only(right: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3E7EF)),
+    final cat = shop.cat;
+    return Stack(clipBehavior: Clip.none, children: [
+      Container(
+        width: 38,
+        height: 38,
+        margin: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: cat.color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2.5),
+          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+        ),
+        child: Icon(cat.icon, color: Colors.white, size: 20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: AppColors.gold.withValues(alpha: 0.2),
-                child: Icon(
-                  iconFor(shop.icon),
-                  size: 14,
-                  color: AppColors.navy,
-                ),
-              ),
+      if (shop.hasPrivilege)
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)),
+            child: const Icon(Icons.card_giftcard, size: 11, color: Colors.black87),
+          ),
+        ),
+    ]);
+  }
+}
+
+class _ShopCard extends StatelessWidget {
+  final ShopPin shop;
+  final VoidCallback onTap;
+  const _ShopCard({required this.shop, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = shop.cat;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 160,
+        margin: const EdgeInsets.only(right: 10),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE3E7EF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              CircleAvatar(radius: 14, backgroundColor: cat.color, child: Icon(cat.icon, size: 14, color: Colors.white)),
               const SizedBox(width: 6),
-              const Icon(Icons.star, size: 14, color: Colors.amber),
-              Text(' ${shop.rating}', style: const TextStyle(fontSize: 11)),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            shop.shopName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-          ),
-        ],
+              if (shop.hasPrivilege) const Icon(Icons.card_giftcard, size: 16, color: AppColors.gold),
+              const Spacer(),
+              Text(shop.openNow ? 'เปิด' : 'ปิด', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: shop.openNow ? AppColors.success : Colors.grey)),
+            ]),
+            const Spacer(),
+            Text(shop.nameTh, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

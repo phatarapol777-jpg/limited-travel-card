@@ -12,6 +12,7 @@ import 'card_detail_screen.dart';
 import 'face_enroll_screen.dart';
 import 'login_screen.dart';
 import 'my_quests_screen.dart';
+import 'my_shops_screen.dart';
 import 'notifications_screen.dart';
 import 'pin_picker_screen.dart';
 import 'trades_screen.dart';
@@ -276,6 +277,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () => _go(const NotificationsScreen()),
                   ),
                   _menu(Icons.flag_outlined, 'ภารกิจของฉัน', subtitle: 'สร้างภารกิจ ติดตามสถานะ และดาวน์โหลด QR', onTap: () => _go(const MyQuestsScreen())),
+                  _menu(Icons.storefront_outlined, 'ร้านค้าของฉัน', subtitle: 'ลงทะเบียนร้านพันธมิตร สิทธิประโยชน์การ์ด และติดตามสถานะ', onTap: () => _go(const MyShopsScreen())),
                   Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(

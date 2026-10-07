@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
+import '../widgets/card_partners.dart';
 import '../widgets/card_widgets.dart';
 import 'trade_composer_screen.dart';
 
@@ -143,6 +144,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
               const SizedBox(height: 6),
               Text(card.lore!),
             ],
+            CardPartners(templateId: card.templateId),
             const SizedBox(height: 22),
             ElevatedButton.icon(
               icon: const Icon(Icons.swap_horiz),

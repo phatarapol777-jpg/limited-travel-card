@@ -138,7 +138,7 @@ document.getElementById('logoutBtn').addEventListener('click', logout);
 
 const TABS = [
   ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'], ['audit', 'บันทึกการตรวจ'], ['kiosks', 'ตู้เช็คอิน'],
-  ['settings', 'ตั้งค่าระบบ'], ['quests', 'ภารกิจ'], ['cards', 'การ์ด'], ['community', 'ชุมชน'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
+  ['settings', 'ตั้งค่าระบบ'], ['quests', 'ภารกิจ'], ['merchants', 'ร้านค้า'], ['cards', 'การ์ด'], ['community', 'ชุมชน'], ['packs', 'การ์ดสุ่ม (ของจริง)'], ['intents', 'ความต้องการการ์ดจริง'],
 ];
 
 function renderTabs() {
@@ -232,6 +232,8 @@ async function renderPanel() {
       await renderSettings(panel);
     } else if (state.tab === 'quests') {
       await renderQuests(panel);
+    } else if (state.tab === 'merchants') {
+      await renderMerchants(panel);
     } else if (state.tab === 'packs') {
       await renderPacks(panel);
     } else if (state.tab === 'intents') {
@@ -431,6 +433,60 @@ async function renderQuests(panel) {
       el('p', { style: 'margin:0 0 8px' }, `การ์ด: ${c.name} · ${c.rarity} · แจกสูงสุด ${c.mint_limit} ใบ (แจกไปแล้ว ${c.minted_count}) ${c.lore ? '· ' + c.lore : ''}`),
       q.reject_reason ? el('p', { class: 'err' }, 'เหตุผลที่ไม่อนุมัติ: ' + q.reject_reason) : '',
       images, el('div', { class: 'row', style: 'gap:8px;margin-top:10px' }, actions));
+  });
+  panel.replaceChildren(tabs, ...(cards.length ? cards : [el('p', { class: 'muted' }, 'ไม่มีรายการ')]));
+}
+
+// ---- partner shop review -------------------------------------------------------------------------------------------------
+const CATEGORY_TH = { RESTAURANT: 'ร้านอาหาร', CAFE: 'คาเฟ่', SOUVENIR: 'ของฝาก', ACCOMMODATION: 'ที่พัก', ACTIVITY: 'กิจกรรม' };
+const DAY_TH = { mon: 'จ.', tue: 'อ.', wed: 'พ.', thu: 'พฤ.', fri: 'ศ.', sat: 'ส.', sun: 'อา.' };
+const SHOP_STATUS_TH = { PENDING: 'รออนุมัติ', APPROVED: 'เปิดใช้งาน', REJECTED: 'ไม่อนุมัติ', SUSPENDED: 'ระงับ' };
+
+async function renderMerchants(panel) {
+  const filter = state.shopFilter || 'PENDING';
+  const { merchants } = await api('/admin/merchants?status=' + filter);
+  const tabs = el('div', { class: 'row', style: 'gap:6px;margin-bottom:10px' }, Object.entries(SHOP_STATUS_TH).map(([v, label]) =>
+    el('button', { class: v === filter ? '' : 'small', onclick: () => { state.shopFilter = v; renderPanel(); } }, label)));
+  const cards = merchants.map((m) => {
+    const body = el('div', { class: 'muted' }, 'กำลังโหลด...');
+    const img = (u, h) => (isJpegDataUrl(u) ? el('img', { src: u, alt: '', style: `height:${h}px;border-radius:8px;border:1px solid var(--line)` }) : '');
+    api('/admin/merchants/' + encodeURIComponent(m.merchant_id)).then((d) => {
+      const f = d.form;
+      const hours = Object.keys(DAY_TH).map((k) => `${DAY_TH[k]} ${(f.opening_hours[k] || []).map((r) => r.join('-')).join(', ') || 'ปิด'}`).join(' · ');
+      const contact = [f.phone, f.facebook, f.instagram, f.line].filter(Boolean).join(' · ');
+      body.className = '';
+      body.replaceChildren(
+        el('p', { style: 'margin:0 0 6px;white-space:pre-wrap' }, f.description),
+        el('p', { class: 'muted', style: 'margin:0 0 6px' }, `${f.address_detail} · พิกัด ${f.latitude}, ${f.longitude}`),
+        el('p', { class: 'muted', style: 'margin:0 0 6px' }, 'เวลาเปิด: ' + hours),
+        el('p', { class: 'muted', style: 'margin:0 0 6px' }, 'ติดต่อ: ' + contact),
+        el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-bottom:8px' }, [img(f.cover_image, 140), ...f.gallery.map((g) => img(g.image, 90))]),
+        f.items.length ? el('div', { style: 'margin-bottom:8px' }, [el('b', {}, 'เมนู/สินค้า'), el('div', { class: 'row', style: 'gap:10px;flex-wrap:wrap' }, f.items.map((i) =>
+          el('div', { style: 'width:110px;font-size:12px' }, img(i.image, 70), el('div', {}, (i.is_signature ? '★ ' : '') + i.name), el('div', { class: 'muted' }, i.price + ' บาท'))))]) : '',
+        f.privileges.length ? el('div', {}, [el('b', {}, 'สิทธิประโยชน์การ์ด'), ...f.privileges.map((p) =>
+          el('p', { style: 'margin:2px 0' }, `การ์ด ${p.template_name || p.template_id}: ${p.description} (${p.start_date || 'ไม่จำกัด'} ถึง ${p.end_date || 'ไม่จำกัด'})`))]) : '');
+    }).catch((e) => { body.textContent = e.message; });
+    const act = (path, payload) => async () => {
+      try { await api('/admin/merchants/' + m.merchant_id + path, { method: 'POST', body: JSON.stringify(payload || {}) }); renderPanel(); } catch (e) { alert(e.message); }
+    };
+    const withReason = (path, ask) => async () => {
+      const reason = prompt(ask);
+      if (!reason) return;
+      await act(path, { reason })();
+    };
+    const buttons = [];
+    if (m.approval_status === 'PENDING' || m.has_revision) {
+      buttons.push(el('button', { onclick: act('/approve') }, m.has_revision ? 'อนุมัติการแก้ไข' : 'อนุมัติ'));
+      buttons.push(el('button', { class: 'small', onclick: withReason('/reject', 'เหตุผลที่ไม่อนุมัติ (จะแจ้งกลับไปยังเจ้าของร้าน):') }, 'ไม่อนุมัติ'));
+    }
+    if (m.approval_status === 'APPROVED') buttons.push(el('button', { class: 'small', onclick: withReason('/suspend', 'เหตุผลที่ระงับร้าน:') }, 'ระงับร้าน'));
+    if (m.approval_status === 'SUSPENDED') buttons.push(el('button', { onclick: act('/unsuspend') }, 'ยกเลิกการระงับ'));
+    return el('div', { class: 'panel', style: 'margin-bottom:12px' },
+      el('h3', { style: 'margin:0 0 4px' }, `${m.shop_name_th} / ${m.shop_name_en}`),
+      el('p', { class: 'muted', style: 'margin:0 0 8px' },
+        `${CATEGORY_TH[m.category] || m.category} · โดย @${m.owner_username} · สถานะ ${SHOP_STATUS_TH[m.approval_status]}${m.has_revision ? ' (มีคำขอแก้ไขรออนุมัติ — แสดงเนื้อหาที่ขอแก้)' : ''} · อัปเดต ${fmtDate(m.updated_at)}`),
+      m.reject_reason ? el('p', { class: 'err' }, 'เหตุผล: ' + m.reject_reason) : '',
+      body, el('div', { class: 'row', style: 'gap:8px;margin-top:10px' }, buttons));
   });
   panel.replaceChildren(tabs, ...(cards.length ? cards : [el('p', { class: 'muted' }, 'ไม่มีรายการ')]));
 }

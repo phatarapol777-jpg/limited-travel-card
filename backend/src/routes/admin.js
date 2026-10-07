@@ -443,13 +443,18 @@ router.get('/merchants', (req, res) => {
   res.json({ merchants: rows.map((r) => ({ ...r, has_revision: !!r.has_revision })) });
 });
 
+function withCardNames(form) {
+  const name = db.prepare('SELECT name FROM card_templates WHERE template_id = ?');
+  return { ...form, privileges: (form.privileges || []).map((p) => ({ ...p, template_name: (name.get(p.template_id) || {}).name || null })) };
+}
+
 router.get('/merchants/:id', (req, res) => {
   const M = require('../services/merchantService');
   const m = db.prepare('SELECT m.*, u.username AS owner_username FROM merchants m JOIN users u ON u.user_id = m.owner_user_id WHERE m.merchant_id = ?').get(req.params.id);
   if (!m) return res.status(404).json({ error: 'ไม่พบร้านค้า' });
   res.json({
     merchant_id: m.merchant_id, owner_username: m.owner_username, status: m.approval_status, reject_reason: m.reject_reason,
-    reviewing: m.pending_revision ? 'revision' : 'new', form: M.currentForm(m.merchant_id),
+    reviewing: m.pending_revision ? 'revision' : 'new', form: withCardNames(M.currentForm(m.merchant_id)),
   });
 });
 
