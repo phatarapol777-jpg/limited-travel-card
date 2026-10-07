@@ -162,16 +162,38 @@ async function renderPanel() {
         users.map((u) => [u.username, `${u.first_name} ${u.last_name}`, u.email, String(u.cards), String(u.checkins), fmtDate(u.created_at)])));
     } else if (state.tab === 'bookings') {
       const { requests } = await api('/admin/booking-requests');
+      const statusSelect = (r) => {
+        const sel = el('select', { onchange: async () => {
+          try { await api('/admin/booking-requests/' + r.booking_request_id + '/status', { method: 'PUT', body: JSON.stringify({ status: sel.value }) }); }
+          catch (e) { alert(e.message); renderPanel(); }
+        } }, [['requested', 'รอดำเนินการ'], ['confirmed', 'ยืนยันแล้ว'], ['rejected', 'ปฏิเสธ']].map(([v, label]) => {
+          const o = el('option', { value: v }, label); if (r.status === v) o.selected = true; return o;
+        }));
+        return sel;
+      };
       panel.replaceChildren(table(['โรงแรม', 'ผู้เข้าพัก', 'ผู้ขอ', 'เข้าพัก', 'ราคา', 'สถานะ', 'เวลาขอ'],
-        requests.map((r) => [r.hotel_name, r.guest_name, r.username, `${r.check_in_date} → ${r.check_out_date}`, `${Math.round(r.price_amount || 0)} ${r.price_currency || ''}`, r.status, fmtDate(r.requested_at)])));
+        requests.map((r) => [r.hotel_name, r.guest_name, r.username, `${r.check_in_date} → ${r.check_out_date}`, `${Math.round(r.price_amount || 0)} ${r.price_currency || ''}`, statusSelect(r), fmtDate(r.requested_at)])));
     } else if (state.tab === 'checkins') {
       const { checkins } = await api('/admin/checkins');
+      const photoBox = el('div', { style: 'margin-top:14px' });
       panel.replaceChildren(table(['เวลา', 'ผู้ใช้', 'สถานที่', 'จังหวัด', 'ยืนยันใบหน้า'],
-        checkins.map((c) => [fmtDate(c.timestamp), c.username, c.location_name, c.province, c.has_face_photo ? 'มีภาพ' : '-'])));
+        checkins.map((c) => [fmtDate(c.timestamp), c.username, c.location_name, c.province,
+          c.photo_session_id ? el('button', { class: 'small', onclick: () => showFacePhoto(photoBox, c) }, 'ดูภาพ') : '-'])), photoBox);
     } else if (state.tab === 'locations') {
       await renderLocations(panel);
     }
   } catch (e) { panel.replaceChildren(el('p', { class: 'err' }, e.message)); }
+}
+
+async function showFacePhoto(box, c) {
+  box.replaceChildren(el('p', { class: 'muted' }, 'กำลังโหลดภาพ...'));
+  try {
+    const { photo } = await api('/admin/kiosk-sessions/' + encodeURIComponent(c.photo_session_id) + '/photo');
+    if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo)) throw new Error('รูปแบบภาพไม่ถูกต้อง');
+    box.replaceChildren(
+      el('p', { class: 'muted' }, `ภาพที่ Kiosk ถ่าย: ${c.username} @ ${c.location_name}`),
+      el('img', { src: photo, alt: 'face capture', style: 'max-width:280px;border-radius:10px;border:1px solid var(--line)' }));
+  } catch (e) { box.replaceChildren(el('p', { class: 'err' }, e.message)); }
 }
 
 async function renderLocations(panel) {

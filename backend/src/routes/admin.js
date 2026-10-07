@@ -159,10 +159,24 @@ router.get('/booking-requests', (req, res) => {
 
 router.get('/checkins', (req, res) => {
   const checkins = db.prepare(`SELECT t.history_id, t.timestamp, u.username, l.name AS location_name, l.province,
-      EXISTS(SELECT 1 FROM checkin_sessions s WHERE s.user_id = t.user_id AND s.location_id = t.location_id AND s.face_photo IS NOT NULL) AS has_face_photo
+      (SELECT s.session_id FROM checkin_sessions s WHERE s.user_id = t.user_id AND s.location_id = t.location_id AND s.face_photo IS NOT NULL ORDER BY s.created_at DESC LIMIT 1) AS photo_session_id
     FROM travel_history t JOIN users u ON u.user_id = t.user_id JOIN locations l ON l.location_id = t.location_id
     WHERE t.status = 'success' ORDER BY t.timestamp DESC LIMIT 100`).all();
   res.json({ checkins });
+});
+
+router.get('/kiosk-sessions/:id/photo', (req, res) => {
+  const row = db.prepare('SELECT face_photo FROM checkin_sessions WHERE session_id = ?').get(req.params.id);
+  if (!row || !row.face_photo) return res.status(404).json({ error: 'ไม่พบภาพ' });
+  res.json({ photo: row.face_photo });
+});
+
+router.put('/booking-requests/:id/status', (req, res) => {
+  const { status } = req.body || {};
+  if (!['requested', 'confirmed', 'rejected'].includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
+  const result = db.prepare('UPDATE booking_requests SET status = ? WHERE booking_request_id = ?').run(status, req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'ไม่พบคำขอจองนี้' });
+  res.json({ status });
 });
 
 module.exports = router;
