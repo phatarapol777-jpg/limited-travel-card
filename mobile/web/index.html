@@ -74,12 +74,20 @@
       }
       return {
         preload: () => ensureModels().then(() => true).catch(() => false),
-        descriptorFromDataUrl: async function (dataUrl) {
+        // Returns a JSON string: {descriptor, yaw} for exactly one clear face, otherwise {problem}.
+        // yaw is the nose position across the jaw line (~0.5 facing the camera, moves toward 0/1 when turned).
+        analyze: async function (dataUrl) {
           await ensureModels();
           const img = await loadImage(dataUrl);
-          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
-          const result = await faceapi.detectSingleFace(img, opts).withFaceLandmarks().withFaceDescriptor();
-          return result ? JSON.stringify(Array.from(result.descriptor)) : null;
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.6 });
+          const faces = await faceapi.detectAllFaces(img, opts).withFaceLandmarks().withFaceDescriptors();
+          if (faces.length === 0) return JSON.stringify({ problem: 'none' });
+          if (faces.length > 1) return JSON.stringify({ problem: 'multiple' });
+          const f = faces[0];
+          if (f.detection.box.width / img.width < 0.2) return JSON.stringify({ problem: 'small' });
+          const pts = f.landmarks.positions;
+          const yaw = (pts[30].x - pts[0].x) / (pts[16].x - pts[0].x);
+          return JSON.stringify({ descriptor: Array.from(f.descriptor), yaw });
         },
       };
     })();

@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/face_service.dart';
+import '../services/liveness.dart';
 import '../theme.dart';
 import '../widgets/travel_card_tile.dart';
 
@@ -34,6 +35,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 
   CameraController? _cameraController;
   Uint8List? _capturedPhotoBytes;
+  String? _prompt;
 
   @override
   void initState() {
@@ -134,36 +136,37 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
         _cameraController = controller;
       });
 
-      // Give the traveler a moment to position their face in frame.
-      await Future.delayed(const Duration(seconds: 3));
-      if (!mounted) return;
-
       setState(() => _stage = _KioskStage.capturing);
-      Uint8List? bytes;
-      List<double>? descriptor;
-      for (var attempt = 0; attempt < 3 && descriptor == null; attempt++) {
-        final photo = await controller.takePicture();
-        bytes = await photo.readAsBytes();
-        descriptor = await faceDescriptorFromDataUrl('data:image/jpeg;base64,${base64Encode(bytes)}');
-        if (descriptor == null) await Future.delayed(const Duration(milliseconds: 800));
+      final LivenessResult live;
+      try {
+        live = await runLivenessCheck(
+          controller,
+          onPrompt: (m) {
+            if (mounted) setState(() => _prompt = m);
+          },
+          isActive: () => mounted,
+        );
+      } on LivenessException catch (e) {
+        await controller.dispose();
         if (!mounted) return;
+        setState(() {
+          _cameraController = null;
+          _stage = _KioskStage.error;
+          _errorMessage = e.message;
+        });
+        return;
       }
       await controller.dispose();
       if (!mounted) return;
+      final bytes = live.photo;
+      final descriptor = live.descriptor;
       setState(() {
         _cameraController = null;
         _capturedPhotoBytes = bytes;
         _stage = _KioskStage.verifying;
       });
-      if (descriptor == null) {
-        setState(() {
-          _stage = _KioskStage.error;
-          _errorMessage = 'ไม่พบใบหน้าในภาพ กรุณาเริ่มใหม่และมองกล้องตรง ๆ';
-        });
-        return;
-      }
 
-      final base64Photo = 'data:image/jpeg;base64,${base64Encode(bytes!)}';
+      final base64Photo = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       await apiClient.post('/kiosk/session/$_sessionId/verify-face', {'photo_base64': base64Photo, 'face_descriptor': descriptor});
       final data = await apiClient.post('/kiosk/session/$_sessionId/complete');
       if (!mounted) return;
@@ -198,6 +201,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       _result = null;
       _cameraController = null;
       _capturedPhotoBytes = null;
+      _prompt = null;
     });
   }
 
@@ -303,7 +307,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              _stage == _KioskStage.capturing ? 'กำลังถ่ายภาพ...' : 'กำลังเปิดกล้องเพื่อสแกนใบหน้า จัดตำแหน่งใบหน้าให้อยู่ในกรอบ',
+              _stage == _KioskStage.capturing ? (_prompt ?? 'กำลังตรวจสอบ...') : 'กำลังเปิดกล้องเพื่อสแกนใบหน้า จัดตำแหน่งใบหน้าให้อยู่ในกรอบ',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white70),
             ),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'face_analysis.dart';
 
 JSObject get _travelFace => globalContext['travelFace'] as JSObject;
 
@@ -11,10 +12,8 @@ Future<void> preloadFaceModels() async {
   } catch (_) {}
 }
 
-/// Returns the 128-number face descriptor for the largest face in [dataUrl], or null if no face is found.
-Future<List<double>?> faceDescriptorFromDataUrl(String dataUrl) async {
-  final result = await _travelFace.callMethod<JSPromise<JSAny?>>('descriptorFromDataUrl'.toJS, dataUrl.toJS).toDart;
-  if (result == null || result.isUndefinedOrNull) return null;
-  final list = jsonDecode((result as JSString).toDart) as List;
-  return list.map((e) => (e as num).toDouble()).toList();
+/// Detects the face in a JPEG data URL (exactly one clear face required) and returns its descriptor and head angle.
+Future<FaceAnalysis> analyzeFace(String dataUrl) async {
+  final result = await _travelFace.callMethod<JSPromise<JSAny?>>('analyze'.toJS, dataUrl.toJS).toDart;
+  return FaceAnalysis.fromJson(jsonDecode((result as JSString).toDart) as Map<String, dynamic>);
 }

@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import '../services/face_service.dart';
+import '../services/liveness.dart';
 import '../theme.dart';
 
 /// A face photo plus the 128-number descriptor computed from it.
@@ -69,23 +69,25 @@ class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
     if (controller == null || _busy) return;
     setState(() {
       _busy = true;
-      _message = 'กำลังตรวจจับใบหน้า...';
+      _message = 'มองตรงที่กล้อง';
     });
     try {
-      final photo = await controller.takePicture();
-      final bytes = await photo.readAsBytes();
-      final descriptor = await faceDescriptorFromDataUrl('data:image/jpeg;base64,${base64Encode(bytes)}');
+      final result = await runLivenessCheck(
+        controller,
+        onPrompt: (m) {
+          if (mounted) setState(() => _message = m);
+        },
+        isActive: () => mounted,
+      );
       if (!mounted) return;
-      if (descriptor == null) {
-        setState(() => _message = 'ไม่พบใบหน้าในภาพ กรุณาจัดใบหน้าให้อยู่ในกรอบและมีแสงสว่างพอ แล้วลองใหม่');
-        return;
-      }
-      final capture = FaceCapture(bytes, descriptor);
+      final capture = FaceCapture(result.photo, result.descriptor);
       setState(() {
         _capture = capture;
         _message = null;
       });
       widget.onChanged(capture);
+    } on LivenessException catch (e) {
+      if (mounted) setState(() => _message = e.message);
     } catch (e) {
       if (mounted) setState(() => _message = 'สแกนใบหน้าไม่สำเร็จ กรุณาลองใหม่ ($e)');
     } finally {
@@ -134,7 +136,7 @@ class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
           if (_message != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Text(_message!, textAlign: TextAlign.center, style: TextStyle(color: _busy ? Colors.grey : Colors.red, fontSize: 13)),
+              child: Text(_message!, textAlign: TextAlign.center, style: TextStyle(color: _busy ? AppColors.navy : Colors.red, fontSize: 14, fontWeight: _busy ? FontWeight.w600 : FontWeight.normal)),
             ),
           ElevatedButton.icon(
             onPressed: (controller == null || _busy) ? null : _capturePhoto,
