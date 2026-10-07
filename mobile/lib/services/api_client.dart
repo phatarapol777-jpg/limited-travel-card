@@ -10,6 +10,9 @@ String get apiBaseUrl {
   return Uri.base.resolve(_configuredApiBaseUrl).toString();
 }
 
+/// Same as the [apiBaseUrl] getter, for code that cannot import it by name without clashing.
+String apiBaseUrlOf() => apiBaseUrl;
+
 class ApiException implements Exception {
   final String message;
   final String? code;

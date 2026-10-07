@@ -13,8 +13,11 @@ import 'face_enroll_screen.dart';
 enum _ScanStage { scanning, connecting, docking, success, error }
 
 class ScanKioskScreen extends StatefulWidget {
-  final TravelLocation location;
-  const ScanKioskScreen({super.key, required this.location});
+  final TravelLocation? location;
+
+  /// When given (the main scan button already read the kiosk's QR) the session opens straight away.
+  final String? kioskCode;
+  const ScanKioskScreen({super.key, this.location, this.kioskCode});
 
   @override
   State<ScanKioskScreen> createState() => _ScanKioskScreenState();
@@ -35,6 +38,16 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
   Timer? _pollTimer;
   Timer? _qrTimer;
   bool _handledDetection = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final code = widget.kioskCode;
+    if (code != null) {
+      _handledDetection = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _open(code));
+    }
+  }
 
   @override
   void dispose() {
@@ -61,7 +74,10 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
     final value = capture.barcodes.isNotEmpty ? capture.barcodes.first.rawValue : null;
     if (value == null || !value.startsWith('TRVKIOSK|')) return;
     _handledDetection = true;
-    final code = value.substring('TRVKIOSK|'.length);
+    await _open(value.substring('TRVKIOSK|'.length));
+  }
+
+  Future<void> _open(String code) async {
     setState(() {
       _stage = _ScanStage.connecting;
       _kioskCode = code;
@@ -151,7 +167,7 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('เช็คอินที่ ${widget.location.name}')),
+      appBar: AppBar(title: Text(widget.location != null ? 'เช็คอินที่ ${widget.location!.name}' : 'เช็คอินที่ตู้')),
       body: SafeArea(child: _buildStage()),
     );
   }
@@ -229,7 +245,7 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
 
       case _ScanStage.success:
         final awarded = ((_result?['awarded_cards'] as List?) ?? []).map((e) => TravelCard.fromJson(e)).toList();
-        final name = (_result?['location'] as Map?)?['name'] ?? widget.location.name;
+        final name = (_result?['location'] as Map?)?['name'] ?? widget.location?.name ?? 'สถานที่นี้';
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -253,9 +269,15 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
                     ),
                   ),
                 ] else
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text('ภารกิจนี้เคยสำเร็จแล้ว ไม่มีการ์ดใหม่', style: TextStyle(color: Colors.grey)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      ((_result?['sold_out_cards'] as List?) ?? []).isNotEmpty
+                          ? 'เช็คอินสำเร็จ แต่การ์ดของสถานที่นี้แจกครบจำนวนแล้ว'
+                          : 'ภารกิจนี้เคยสำเร็จแล้ว ไม่มีการ์ดใหม่',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                   ),
                 const SizedBox(height: 20),
                 ElevatedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('เสร็จสิ้น')),

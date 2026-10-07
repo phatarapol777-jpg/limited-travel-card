@@ -73,6 +73,7 @@ Color rarityColor(String rarity) {
   switch (rarity) {
     case 'rare':
       return AppColors.rareBlue;
+    case 'special':
     case 'epic':
       return AppColors.epicPurple;
     default:

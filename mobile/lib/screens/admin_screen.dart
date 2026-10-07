@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
@@ -120,7 +121,7 @@ const _kIcons = [
   'temple_buddhist', 'landscape', 'beach_access', 'account_balance', 'train',
   'terrain', 'restaurant', 'local_cafe', 'store', 'checkroom', 'pedal_bike', 'star', 'auto_awesome', 'place',
 ];
-const _kRarities = ['common', 'rare', 'epic'];
+const _kRarities = ['normal', 'rare', 'special'];
 
 class AdminLocationFormScreen extends StatefulWidget {
   final Map<String, dynamic>? existing;
@@ -144,7 +145,7 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
 
   late String _icon = widget.existing?['icon'] ?? _kIcons.first;
   late String _cardIcon = widget.existing?['card']?['icon'] ?? _kIcons.first;
-  late String _rarity = widget.existing?['card']?['rarity'] ?? 'common';
+  late String _rarity = normalizeRarity(widget.existing?['card']?['rarity'] as String?);
   bool _saving = false;
   String? _error;
 
@@ -270,7 +271,7 @@ class _AdminLocationFormScreenState extends State<AdminLocationFormScreen> {
                   initialValue: _rarity,
                   decoration: const InputDecoration(labelText: 'ความหายาก'),
                   items: _kRarities.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                  onChanged: (v) => setState(() => _rarity = v ?? 'common'),
+                  onChanged: (v) => setState(() => _rarity = v ?? 'normal'),
                 ),
 
                 if (_error != null) ...[

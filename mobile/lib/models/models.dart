@@ -1,3 +1,5 @@
+import '../services/api_client.dart' show apiBaseUrl;
+
 class AppUser {
   final String userId;
   final String username;
@@ -122,6 +124,22 @@ class Mission {
       );
 }
 
+/// Rarity names changed from common/epic to normal/special; accept both from older data.
+String normalizeRarity(String? r) {
+  switch ((r ?? '').toLowerCase()) {
+    case 'common':
+    case 'normal':
+      return 'normal';
+    case 'epic':
+    case 'special':
+      return 'special';
+    case 'rare':
+      return 'rare';
+    default:
+      return 'normal';
+  }
+}
+
 class TravelCard {
   final String cardInstanceId;
   final String templateId;
@@ -130,7 +148,16 @@ class TravelCard {
   final String colorHex;
   final String rarity;
   final String type;
+  final String cardType; // QUEST_LOCATION | PHYSICAL_BLIND_PACK
+  final String activationStatus; // UNCLAIMED | CLAIMED | LOCKED_IN_TRADE
+  final String? serialLabel;
+  final String? lore;
+  final int? mintLimit;
+  final int mintedCount;
+  final bool hasImage;
+  final String? questId;
   final String? locationName;
+  final String? province;
   final String? acquiredAt;
 
   TravelCard({
@@ -141,9 +168,25 @@ class TravelCard {
     required this.colorHex,
     required this.rarity,
     required this.type,
+    this.cardType = 'QUEST_LOCATION',
+    this.activationStatus = 'CLAIMED',
+    this.serialLabel,
+    this.lore,
+    this.mintLimit,
+    this.mintedCount = 0,
+    this.hasImage = false,
+    this.questId,
     this.locationName,
+    this.province,
     this.acquiredAt,
   });
+
+  bool get isLocked => activationStatus == 'LOCKED_IN_TRADE';
+  bool get isPhysicalPack => cardType == 'PHYSICAL_BLIND_PACK';
+  String get rarityLabel => rarity == 'special' ? 'Special' : (rarity == 'rare' ? 'Rare' : 'Normal');
+
+  /// Public artwork URL (only served for approved quests and seeded cards).
+  String? get imageUrl => hasImage ? '$apiBaseUrl/media/card/$templateId' : null;
 
   factory TravelCard.fromJson(Map<String, dynamic> j) => TravelCard(
         cardInstanceId: j['card_instance_id'],
@@ -151,9 +194,18 @@ class TravelCard {
         name: j['name'],
         icon: j['icon'] ?? 'style',
         colorHex: j['color_hex'] ?? '#4C6B8A',
-        rarity: j['rarity'] ?? 'common',
+        rarity: normalizeRarity(j['rarity']),
         type: j['type'] ?? 'mission',
+        cardType: j['card_type'] ?? 'QUEST_LOCATION',
+        activationStatus: j['activation_status'] ?? 'CLAIMED',
+        serialLabel: j['serial_label'],
+        lore: j['lore'],
+        mintLimit: j['mint_limit'],
+        mintedCount: j['minted_count'] ?? 0,
+        hasImage: j['has_image'] == true,
+        questId: j['quest_id'],
         locationName: j['location_name'],
+        province: j['province'],
         acquiredAt: j['acquired_at'],
       );
 }

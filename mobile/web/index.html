@@ -202,6 +202,61 @@
       };
     })();
 
+    // Photo picking and saving for quest / card artwork.
+    window.travelImage = {
+      // Opens the file picker (call it straight from a tap: iOS Safari blocks it after an await), then resolves to a
+      // JPEG data URL resized to at most maxSide pixels and maxChars characters ('' when cancelled).
+      pick: (maxSide, maxChars) => new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.addEventListener('cancel', () => resolve(''));
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) return resolve('');
+          const img = new Image();
+          img.onload = () => {
+            let side = maxSide;
+            for (let attempt = 0; attempt < 8; attempt++) {
+              const scale = Math.min(1, side / Math.max(img.width, img.height));
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(img.width * scale));
+              canvas.height = Math.max(1, Math.round(img.height * scale));
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#fff';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              for (const q of [0.85, 0.72, 0.6, 0.48]) {
+                const url = canvas.toDataURL('image/jpeg', q);
+                if (url.length <= maxChars) return resolve(url);
+              }
+              side = Math.round(side * 0.8);
+            }
+            resolve('');
+          };
+          img.onerror = () => resolve('');
+          img.src = URL.createObjectURL(file);
+        };
+        input.click();
+      }),
+      download: (dataUrl, filename) => {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      },
+      // iOS Safari ignores the download attribute: open the picture so it can be long-pressed and saved.
+      open: (dataUrl) => {
+        const bytes = atob(dataUrl.split(',')[1]);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        const type = dataUrl.slice(5, dataUrl.indexOf(';'));
+        window.open(URL.createObjectURL(new Blob([arr], { type })), '_blank');
+      },
+    };
+
     // Current GPS position as a JSON string, or '' when unavailable or denied.
     window.travelGeo = {
       get: () => new Promise((resolve) => {

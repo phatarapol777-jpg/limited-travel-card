@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
+import '../widgets/location_quests.dart';
 import 'booking_screen.dart';
 import 'scan_kiosk_screen.dart';
 
@@ -112,6 +113,7 @@ class _MapMissionsScreenState extends State<MapMissionsScreen> {
                 ],
               ),
               const SizedBox(height: 20),
+              LocationQuests(locationId: loc.locationId),
               if (missionsHere.isNotEmpty) ...[
                 const Text('ภารกิจ (Missions)', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
