@@ -90,9 +90,9 @@ router.post('/locations', (req, res) => {
     .run(locationId, name, description || null, latitude, longitude, province, icon || 'place', now);
 
   const kioskId = newId('kiosk');
-  db.prepare(`INSERT INTO checkin_kiosks (kiosk_id, location_id, mac_address, mock_ble_signal, status)
-    VALUES (?, ?, ?, ?, 'online')`)
-    .run(kioskId, locationId, `AA:BB:CC:${randomMacSuffix()}`, `BLE-BEACON-${locationId.slice(-4)}`);
+  db.prepare(`INSERT INTO checkin_kiosks (kiosk_id, location_id, mac_address, mock_ble_signal, status, kiosk_code)
+    VALUES (?, ?, ?, ?, 'online', ?)`)
+    .run(kioskId, locationId, `AA:BB:CC:${randomMacSuffix()}`, `BLE-BEACON-${locationId.slice(-4)}`, require('../services/kioskService').nextKioskCode());
 
   const missionId = newId('msn');
   db.prepare(`INSERT INTO missions (mission_id, location_id, title, description, end_date, status)
@@ -225,7 +225,8 @@ router.get('/checkins', (req, res) => {
 });
 
 router.get('/kiosks', (req, res) => {
-  const { kioskKey } = require('../services/kioskService');
+  const { kioskKey, ensureKioskCodes } = require('../services/kioskService');
+  ensureKioskCodes();
   const rows = db.prepare(`SELECT k.kiosk_code, k.last_seen_at, l.name AS location_name, l.province
     FROM checkin_kiosks k JOIN locations l ON l.location_id = k.location_id ORDER BY k.kiosk_code`).all();
   res.json({ kiosks: rows.map((k) => ({ ...k, kiosk_key: kioskKey(k.kiosk_code) })) });

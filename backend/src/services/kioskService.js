@@ -8,11 +8,25 @@ const { SECRET } = require('../secret');
 const KIOSK_SECRET = SECRET;
 
 function kioskKey(code) {
+  // a kiosk without a code would get the same key as every other code-less kiosk: refuse instead
+  if (!code) throw new Error('kioskKey needs a kiosk code');
   return crypto.createHmac('sha256', KIOSK_SECRET).update(`kiosk|${code}`).digest('hex').slice(0, 20);
 }
 
+/** The next free code: KSK-001, KSK-002, ... one above the highest number in use. */
+function nextKioskCode() {
+  const max = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(kiosk_code, 5) AS INTEGER)), 0) AS m FROM checkin_kiosks WHERE kiosk_code LIKE 'KSK-%'").get().m;
+  return `KSK-${String(max + 1).padStart(3, '0')}`;
+}
+
+/** Gives every kiosk that has no code its own (run at boot, and by the admin list as a safety net). */
 function ensureKioskCodes() {
-  db.exec("UPDATE checkin_kiosks SET kiosk_code = 'KSK-' || printf('%03d', rowid) WHERE kiosk_code IS NULL");
+  const pending = db.prepare('SELECT kiosk_id FROM checkin_kiosks WHERE kiosk_code IS NULL ORDER BY rowid').all();
+  const assign = db.prepare('UPDATE checkin_kiosks SET kiosk_code = ? WHERE kiosk_id = ?');
+  db.transaction(() => {
+    for (const k of pending) assign.run(nextKioskCode(), k.kiosk_id);
+  })();
+  return pending.length;
 }
 
 // ---- check parameters -----------------------------------------------------
@@ -98,7 +112,7 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 }
 
 module.exports = {
-  kioskKey, ensureKioskCodes, faceDistance, similarityScore, validDescriptor, qrHmac, checkQr, safeEqual,
+  kioskKey, ensureKioskCodes, nextKioskCode, faceDistance, similarityScore, validDescriptor, qrHmac, checkQr, safeEqual,
   sameNetwork, haversineMeters, normalizeIp,
   FACE_MATCH_THRESHOLD, FACE_PASS_SCORE, QR_TIME_WINDOW_S, BLE_TOKEN_MAX_AGE_S, GEO_RADIUS_M, ENV_CHECK_ENABLED, HMAC_LEN,
 };
