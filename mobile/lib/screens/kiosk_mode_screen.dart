@@ -100,11 +100,23 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       final data = await apiClient.get('/catalog/kiosks').timeout(const Duration(seconds: 20));
       _retryList?.cancel();
       if (!mounted) return;
+      final kiosks = (data['kiosks'] as List).map((e) => CheckinKiosk.fromJson(e)).toList();
       setState(() {
-        _kiosks = (data['kiosks'] as List).map((e) => CheckinKiosk.fromJson(e)).toList();
+        _kiosks = kiosks;
         _loadingKiosks = false;
         _kioskListError = null;
+        // keep the choice if it is still in the list (the list objects are new after every load)
+        final chosen = _selected?.kioskId;
+        _selected = null;
+        for (final k in kiosks) {
+          if (k.kioskId == chosen) _selected = k;
+        }
       });
+      if (kiosks.any((k) => k.kioskCode.isEmpty)) {
+        // the server is still giving a kiosk its code: look again shortly
+        _retryList?.cancel();
+        _retryList = Timer(const Duration(seconds: 3), _loadKiosks);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -136,7 +148,17 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       _starting = true;
       _setupError = null;
     });
-    _code = kiosk?.kioskCode ?? typedCode;
+    _code = (kiosk != null && kiosk.kioskCode.isNotEmpty) ? kiosk.kioskCode : typedCode;
+    if (_code.isEmpty) {
+      // an old copy of the list (loaded before this kiosk had a code): refresh it instead of calling a blank address
+      setState(() {
+        _starting = false;
+        _setupError = 'ตู้นี้ยังไม่มีรหัส (รายการเก่าค้างอยู่) กำลังโหลดรายการใหม่ กรุณาเลือกตู้อีกครั้ง หรือพิมพ์รหัสตู้เช่น KSK-014';
+        _selected = null;
+      });
+      _loadKiosks();
+      return;
+    }
     _key = _keyController.text.trim();
     _locationName = kiosk != null ? '${kiosk.locationName} (${kiosk.province})' : _code;
     _geo = await currentPosition();
@@ -164,8 +186,12 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     try {
       await _beat(first: true);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _setupError = e.message);
-      if (mounted) setState(() => _starting = false);
+      if (mounted) {
+        setState(() {
+          _setupError = e.message.contains('404') ? 'ไม่พบตู้รหัส "$_code" ตรวจรหัสตู้อีกครั้ง' : e.message;
+          _starting = false;
+        });
+      }
       return;
     } catch (e) {
       if (mounted) setState(() => _setupError = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
@@ -483,7 +509,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
                           isExpanded: true,
                           value: _selected,
                           hint: const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Text('เลือกตู้ / สถานที่')),
-                          items: _kiosks.map((k) => DropdownMenuItem(value: k, child: Text('${k.kioskCode} · ${k.locationName}'))).toList(),
+                          items: _kiosks.map((k) => DropdownMenuItem(value: k, child: Text(k.kioskCode.isEmpty ? k.locationName : '${k.kioskCode} · ${k.locationName}'))).toList(),
                           onChanged: (v) => setState(() => _selected = v),
                         ),
                       ),
