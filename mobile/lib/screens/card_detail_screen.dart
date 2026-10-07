@@ -135,7 +135,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             if (card.serialLabel != null) _row('หมายเลขการ์ด', card.serialLabel!),
             _row('ประเภท', card.isPhysicalPack ? 'การ์ดสุ่มจำหน่ายภายนอก' : 'การ์ดภารกิจ / สถานที่'),
             if (card.locationName != null) _row('สถานที่', '${card.locationName}${card.province != null ? ' · ${card.province}' : ''}'),
-            if (card.mintLimit != null) _row('แจกแล้ว', '${card.mintedCount}/${card.mintLimit} ใบ'),
+            if (card.mintLimit != null) _row(card.isPhysicalPack ? 'ผลิตทั้งหมด' : 'แจกแล้ว', card.isPhysicalPack ? '${card.mintLimit} ใบ' : '${card.mintedCount}/${card.mintLimit} ใบ'),
             if (card.acquiredAt != null) _row('ได้รับเมื่อ', card.acquiredAt!.substring(0, 10)),
             if (card.lore != null && card.lore!.isNotEmpty) ...[
               const SizedBox(height: 14),

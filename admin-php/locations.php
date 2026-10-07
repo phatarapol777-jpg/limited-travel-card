@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $payload['latitude'] = (float)$payload['latitude'];
             $payload['longitude'] = (float)$payload['longitude'];
-            if (!in_array($payload['card_rarity'], ['common', 'rare', 'epic'], true)) {
-                $payload['card_rarity'] = 'common';
+            if (!in_array($payload['card_rarity'], ['normal', 'rare', 'special'], true)) {
+                $payload['card_rarity'] = 'normal';
             }
             if ($id !== '') {
                 admin_api('PUT', '/admin/locations/' . rawurlencode($id), $payload);
@@ -74,7 +74,7 @@ if ($new || $editing):
       <div><label>สีการ์ด (hex)</label><input name="card_color_hex" value="<?= h($v('card_color_hex', '#4C6B8A')) ?>"></div>
       <div><label>ไอคอนการ์ด</label><input name="card_icon" value="<?= h($v('card_icon', 'style')) ?>"></div>
       <div><label>ความหายาก</label><select name="card_rarity">
-        <?php foreach (['common', 'rare', 'epic'] as $r): ?><option<?= $v('card_rarity') === $r ? ' selected' : '' ?>><?= h($r) ?></option><?php endforeach; ?>
+        <?php foreach (['normal', 'rare', 'special'] as $r): ?><option<?= $v('card_rarity') === $r ? ' selected' : '' ?>><?= h($r) ?></option><?php endforeach; ?>
       </select></div>
     </div>
     <p><button class="btn">บันทึก</button> <a class="btn small" href="locations.php">ยกเลิก</a></p>
