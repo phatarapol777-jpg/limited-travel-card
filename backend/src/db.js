@@ -194,4 +194,10 @@ CREATE TABLE IF NOT EXISTS checkin_sessions (
 );
 `);
 
+const userColumns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+if (!userColumns.includes('google_sub')) {
+  db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL');
+
 module.exports = db;

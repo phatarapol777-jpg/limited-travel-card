@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('../db');
 const { newId, hashPassword, verifyPassword, createSession, authMiddleware, publicUser } = require('../util');
 
@@ -31,6 +32,60 @@ router.post('/login', (req, res) => {
   }
   const token = createSession(user.user_id);
   res.json({ token, user: publicUser(user) });
+});
+
+async function verifyGoogleIdToken(idToken) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) throw Object.assign(new Error('เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า GOOGLE_CLIENT_ID'), { status: 503 });
+  const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  if (!res.ok) throw Object.assign(new Error('Google token ไม่ถูกต้องหรือหมดอายุ'), { status: 401 });
+  const info = await res.json();
+  if (info.aud !== clientId) throw Object.assign(new Error('Google token ไม่ได้ออกให้แอปนี้'), { status: 401 });
+  if (!['accounts.google.com', 'https://accounts.google.com'].includes(info.iss)) throw Object.assign(new Error('ผู้ออก token ไม่ถูกต้อง'), { status: 401 });
+  if (!info.sub || !info.email) throw Object.assign(new Error('Google token ไม่มีข้อมูลบัญชี'), { status: 401 });
+  return info;
+}
+
+function uniqueUsername(base) {
+  const clean = (base || 'traveler').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20) || 'traveler';
+  let candidate = clean;
+  while (db.prepare('SELECT 1 FROM users WHERE username = ?').get(candidate)) {
+    candidate = `${clean}${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+  return candidate;
+}
+
+router.post('/google', async (req, res) => {
+  try {
+    const { id_token } = req.body || {};
+    if (!id_token || typeof id_token !== 'string') return res.status(400).json({ error: 'Missing id_token' });
+    const info = await verifyGoogleIdToken(id_token);
+    const emailVerified = info.email_verified === true || info.email_verified === 'true';
+
+    let user = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(info.sub);
+    if (!user && emailVerified) {
+      const byEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(info.email);
+      if (byEmail && !byEmail.is_admin) {
+        db.prepare('UPDATE users SET google_sub = ? WHERE user_id = ?').run(info.sub, byEmail.user_id);
+        user = db.prepare('SELECT * FROM users WHERE user_id = ?').get(byEmail.user_id);
+      }
+    }
+    if (!user) {
+      if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(info.email)) {
+        return res.status(409).json({ error: 'อีเมลนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่าน' });
+      }
+      const userId = newId('usr');
+      const { hash, salt } = hashPassword(crypto.randomBytes(32).toString('hex'));
+      db.prepare(`INSERT INTO users (user_id, username, password_hash, password_salt, first_name, last_name, email, phone, face_data, google_sub, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'captured', ?, ?)`)
+        .run(userId, uniqueUsername(info.email.split('@')[0]), hash, salt,
+          info.given_name || info.name || 'Google', info.family_name || '-', info.email, info.sub, new Date().toISOString());
+      user = db.prepare('SELECT * FROM users WHERE user_id = ?').get(userId);
+    }
+    res.json({ token: createSession(user.user_id), user: publicUser(user) });
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message || 'Google sign-in failed' });
+  }
 });
 
 router.get('/me', authMiddleware, (req, res) => {

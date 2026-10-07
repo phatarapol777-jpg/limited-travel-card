@@ -6,6 +6,7 @@ import '../theme.dart';
 import 'register_screen.dart';
 import 'home_shell.dart';
 import 'kiosk_mode_screen.dart';
+import '../widgets/google_sign_in_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -37,6 +38,18 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _googleLogin(String idToken) async {
+    try {
+      await context.read<AppState>().loginWithGoogle(idToken);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่');
     }
   }
 
@@ -92,6 +105,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Text('Log In'),
                   ),
+                  const SizedBox(height: 16),
+                  const Row(children: [
+                    Expanded(child: Divider()),
+                    Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('หรือ', style: TextStyle(color: Colors.grey, fontSize: 12))),
+                    Expanded(child: Divider()),
+                  ]),
+                  const SizedBox(height: 12),
+                  GoogleSignInButton(onIdToken: _googleLogin, onError: (m) => setState(() => _error = m)),
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),

@@ -38,6 +38,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loginWithGoogle(String idToken) async {
+    final data = await apiClient.post('/auth/google', {'id_token': idToken});
+    apiClient.token = data['token'];
+    currentUser = AppUser.fromJson(data['user']);
+    await refreshStats();
+    notifyListeners();
+  }
+
   Future<void> refreshStats() async {
     final data = await apiClient.get('/auth/me');
     currentUser = AppUser.fromJson(data['user']);

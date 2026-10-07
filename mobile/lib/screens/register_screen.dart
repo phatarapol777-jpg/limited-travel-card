@@ -4,6 +4,7 @@ import '../services/app_state.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../widgets/face_scan_widget.dart';
+import '../widgets/google_sign_in_button.dart';
 import 'home_shell.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -67,6 +68,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  Future<void> _googleSignUp(String idToken) async {
+    try {
+      await context.read<AppState>().loginWithGoogle(idToken);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeShell()), (route) => false);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบว่า backend รันอยู่');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,6 +92,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                GoogleSignInButton(onIdToken: _googleSignUp, onError: (m) => setState(() => _error = m)),
+                const SizedBox(height: 12),
+                const Row(children: [
+                  Expanded(child: Divider()),
+                  Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('หรือสมัครด้วยอีเมล', style: TextStyle(color: Colors.grey, fontSize: 12))),
+                  Expanded(child: Divider()),
+                ]),
+                const SizedBox(height: 16),
                 TextFormField(
                   controller: _fullName,
                   decoration: const InputDecoration(labelText: 'Full Name'),
