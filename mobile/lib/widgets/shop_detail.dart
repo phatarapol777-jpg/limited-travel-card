@@ -65,9 +65,9 @@ class _ShopDetailBodyState extends State<ShopDetailBody> {
 
   @override
   Widget build(BuildContext context) {
-    final pin = widget.pin;
-    final cat = pin.cat;
     final d = _d;
+    final pin = d?.pin ?? widget.pin;
+    final cat = pin.cat;
     return ListView(
       controller: widget.controller,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),

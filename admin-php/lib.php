@@ -45,7 +45,7 @@ function db(): PDO {
 }
 
 /** Calls the traveler app's REST API. Returns [httpStatus, decodedBody]. */
-function api(string $method, string $path, ?array $body = null, ?string $token = null): array {
+function api(string $method, string $path, ?array $body = null, ?string $token = null, int $timeout = 90): array {
     if (!function_exists('curl_init')) {
         throw new RuntimeException('PHP cURL extension is not enabled on this server.');
     }
@@ -59,7 +59,7 @@ function api(string $method, string $path, ?array $body = null, ?string $token =
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 90, // Render's free tier can take ~50s to wake up
+        CURLOPT_TIMEOUT => $timeout, // default 90: Render's free tier can take ~50s to wake up
         CURLOPT_CONNECTTIMEOUT => 20,
         CURLOPT_SSL_VERIFYPEER => $cfg['verify_ssl'] ?? true,
         CURLOPT_SSL_VERIFYHOST => ($cfg['verify_ssl'] ?? true) ? 2 : 0,
@@ -86,8 +86,8 @@ function api(string $method, string $path, ?array $body = null, ?string $token =
 }
 
 /** API call using the logged-in admin's token; throws with the API's own message on failure. */
-function admin_api(string $method, string $path, ?array $body = null): array {
-    [$status, $data] = api($method, $path, $body, $_SESSION['token'] ?? null);
+function admin_api(string $method, string $path, ?array $body = null, int $timeout = 90): array {
+    [$status, $data] = api($method, $path, $body, $_SESSION['token'] ?? null, $timeout);
     if ($status === 401 || $status === 403) {
         session_destroy();
         header('Location: login.php');

@@ -12,7 +12,7 @@ $last = $pdo->query('SELECT synced_at FROM sync_log ORDER BY synced_at DESC LIMI
 $modules = null;
 $modulesError = null;
 try {
-    $modules = admin_api('GET', '/admin/stats')['modules'] ?? null;
+    $modules = admin_api('GET', '/admin/stats', null, 8)['modules'] ?? null;
 } catch (Throwable $e) {
     $modulesError = $e->getMessage();
 }

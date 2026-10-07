@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { newId, authMiddleware } = require('../util');
+const { newId, authMiddleware, SESSION_MAX_AGE_MS } = require('../util');
 const { bangkokToday } = require('../services/questService');
 const M = require('../services/merchantService');
 
@@ -9,8 +9,9 @@ const router = express.Router();
 function optionalUser(req) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  const session = token ? db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) : null;
-  return session ? db.prepare('SELECT user_id, is_admin FROM users WHERE user_id = ?').get(session.user_id) : null;
+  const session = token ? db.prepare('SELECT user_id, created_at FROM sessions WHERE token = ?').get(token) : null;
+  const fresh = session && Date.now() - new Date(session.created_at).getTime() <= SESSION_MAX_AGE_MS;
+  return fresh ? db.prepare('SELECT user_id, is_admin FROM users WHERE user_id = ?').get(session.user_id) : null;
 }
 
 function privilegesOf(merchantId) {
