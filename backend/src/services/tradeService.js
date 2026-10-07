@@ -41,6 +41,9 @@ const completeTrade = db.transaction((trade) => {
     if (give.run(trade.from_user_id, now, requested.card_instance_id, trade.to_user_id).changes !== 1) throw new Error('swap failed');
     logOwnership(requested.card_instance_id, trade.to_user_id, trade.from_user_id, 'trade', trade.trade_id);
   }
+  // a traded-away card leaves its old owner's showcase
+  db.prepare('DELETE FROM user_pins WHERE card_instance_id = ? AND user_id = ?').run(offered.card_instance_id, trade.from_user_id);
+  if (requested) db.prepare('DELETE FROM user_pins WHERE card_instance_id = ? AND user_id = ?').run(requested.card_instance_id, trade.to_user_id);
   db.prepare("UPDATE trades SET status = 'accepted', resolved_at = ? WHERE trade_id = ? AND status = 'pending'").run(now, trade.trade_id);
   return { ok: true };
 });

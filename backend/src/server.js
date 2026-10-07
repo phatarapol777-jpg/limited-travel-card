@@ -40,6 +40,7 @@ async function main() {
   app.use('/api/media', require('./routes/media'));
   app.use('/api/trades', require('./routes/trades'));
   app.use('/api/users', require('./routes/users'));
+  app.use('/api/profile', require('./routes/profile'));
   app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/admin', require('./routes/admin'));
   app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));

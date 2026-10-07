@@ -352,6 +352,16 @@ CREATE INDEX IF NOT EXISTS idx_trades_to ON trades(to_user_id, status);
 CREATE INDEX IF NOT EXISTS idx_trades_from ON trades(from_user_id, status);
 `);
 
+db.exec(`
+-- The cards a user shows at the top of their profile (up to 5, in order).
+CREATE TABLE IF NOT EXISTS user_pins (
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  card_instance_id TEXT NOT NULL REFERENCES all_cards(card_instance_id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (user_id, card_instance_id)
+);
+`);
+
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 
