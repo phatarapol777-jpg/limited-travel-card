@@ -12,7 +12,8 @@ String get apiBaseUrl {
 
 class ApiException implements Exception {
   final String message;
-  ApiException(this.message);
+  final String? code;
+  ApiException(this.message, {this.code});
   @override
   String toString() => message;
 }
@@ -39,7 +40,7 @@ class ApiClient {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return body;
     }
-    throw ApiException(body?['error']?.toString() ?? 'Request failed (${res.statusCode})');
+    throw ApiException(body?['error']?.toString() ?? 'Request failed (${res.statusCode})', code: (body?['code'] ?? body?['status'])?.toString());
   }
 
   Future<dynamic> get(String path) async {

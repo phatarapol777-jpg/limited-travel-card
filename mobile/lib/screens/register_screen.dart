@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
 import '../services/api_client.dart';
-import '../theme.dart';
-import '../widgets/face_scan_widget.dart';
+import '../widgets/face_capture_widget.dart';
 import '../widgets/google_sign_in_button.dart';
 import 'home_shell.dart';
 
@@ -22,22 +21,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _username = TextEditingController();
   final _password = TextEditingController();
 
-  bool _scanComplete = false;
+  FaceCapture? _face;
   bool _loading = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _scanComplete = true);
-    });
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (!_scanComplete) {
-      setState(() => _error = 'กรุณารอการสแกนใบหน้าให้เสร็จสิ้นก่อน');
+    final face = _face;
+    if (face == null) {
+      setState(() => _error = 'กรุณาสแกนใบหน้าก่อนสมัคร (ใช้ยืนยันตัวตนตอนเช็คอิน)');
       return;
     }
     setState(() {
@@ -56,6 +48,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             lastName: lastName,
             email: _email.text.trim(),
             phone: _phone.text.trim(),
+            facePhoto: face.photoDataUrl,
+            faceDescriptor: face.descriptor,
           );
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeShell()), (route) => false);
@@ -116,11 +110,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Center(
                   child: Column(
                     children: [
-                      FaceScanWidget(complete: _scanComplete),
-                      const SizedBox(height: 8),
-                      Text(
-                        _scanComplete ? 'ยืนยันใบหน้าสำเร็จ' : 'กำลังสแกนใบหน้า...',
-                        style: TextStyle(color: _scanComplete ? AppColors.success : Colors.grey, fontWeight: FontWeight.w500),
+                      const Text('สแกนใบหน้าเพื่อใช้ยืนยันตัวตนตอนเช็คอิน', style: TextStyle(fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 10),
+                      FaceCaptureWidget(onChanged: (c) => setState(() => _face = c)),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'การสมัครถือว่าคุณยินยอมให้จัดเก็บภาพและข้อมูลลักษณะใบหน้า (ข้อมูลส่วนบุคคลที่อ่อนไหว) เพื่อการยืนยันตัวตนเท่านั้น',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey, fontSize: 11),
                       ),
                     ],
                   ),

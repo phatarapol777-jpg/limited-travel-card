@@ -3,21 +3,36 @@ const crypto = require('crypto');
 const db = require('../db');
 const { newId, hashPassword, verifyPassword, createSession, authMiddleware, publicUser } = require('../util');
 
+const MAX_PHOTO_CHARS = 1_500_000;
+
+function parseFace(body) {
+  const { face_photo, face_descriptor } = body || {};
+  if (typeof face_photo !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(face_photo) || face_photo.length > MAX_PHOTO_CHARS) {
+    return { error: 'ภาพใบหน้าไม่ถูกต้อง' };
+  }
+  if (!Array.isArray(face_descriptor) || face_descriptor.length !== 128 || !face_descriptor.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+    return { error: 'ไม่พบใบหน้าในภาพ กรุณาถ่ายใหม่ให้เห็นใบหน้าชัดเจน' };
+  }
+  return { photo: face_photo, descriptor: JSON.stringify(face_descriptor) };
+}
+
 const router = express.Router();
 
 router.post('/register', (req, res) => {
-  const { username, password, first_name, last_name, email, phone, face_data } = req.body || {};
+  const { username, password, first_name, last_name, email, phone } = req.body || {};
   if (!username || !password || !first_name || !last_name || !email) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
+  const face = parseFace(req.body);
+  if (face.error) return res.status(400).json({ error: face.error });
   const existing = db.prepare('SELECT 1 FROM users WHERE username = ? OR email = ?').get(username, email);
   if (existing) return res.status(409).json({ error: 'Username or email already exists' });
 
   const userId = newId('usr');
   const { hash, salt } = hashPassword(password);
-  db.prepare(`INSERT INTO users (user_id, username, password_hash, password_salt, first_name, last_name, email, phone, face_data, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(userId, username, hash, salt, first_name, last_name, email, phone || null, face_data || 'captured', new Date().toISOString());
+  db.prepare(`INSERT INTO users (user_id, username, password_hash, password_salt, first_name, last_name, email, phone, face_photo, face_descriptor, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(userId, username, hash, salt, first_name, last_name, email, phone || null, face.photo, face.descriptor, new Date().toISOString());
 
   const token = createSession(userId);
   const user = db.prepare('SELECT * FROM users WHERE user_id = ?').get(userId);
@@ -77,7 +92,7 @@ router.post('/google', async (req, res) => {
       const userId = newId('usr');
       const { hash, salt } = hashPassword(crypto.randomBytes(32).toString('hex'));
       db.prepare(`INSERT INTO users (user_id, username, password_hash, password_salt, first_name, last_name, email, phone, face_data, google_sub, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'captured', ?, ?)`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`)
         .run(userId, uniqueUsername(info.email.split('@')[0]), hash, salt,
           info.given_name || info.name || 'Google', info.family_name || '-', info.email, info.sub, new Date().toISOString());
       user = db.prepare('SELECT * FROM users WHERE user_id = ?').get(userId);
@@ -86,6 +101,13 @@ router.post('/google', async (req, res) => {
   } catch (err) {
     res.status(err.status || 502).json({ error: err.message || 'Google sign-in failed' });
   }
+});
+
+router.put('/face', authMiddleware, (req, res) => {
+  const face = parseFace(req.body);
+  if (face.error) return res.status(400).json({ error: face.error });
+  db.prepare('UPDATE users SET face_photo = ?, face_descriptor = ? WHERE user_id = ?').run(face.photo, face.descriptor, req.user.user_id);
+  res.json({ has_face: true });
 });
 
 router.get('/me', authMiddleware, (req, res) => {

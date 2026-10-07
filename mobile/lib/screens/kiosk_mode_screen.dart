@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/face_service.dart';
 import '../theme.dart';
 import '../widgets/travel_card_tile.dart';
 
@@ -37,6 +38,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   @override
   void initState() {
     super.initState();
+    preloadFaceModels();
     _loadKiosks();
   }
 
@@ -137,8 +139,15 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       if (!mounted) return;
 
       setState(() => _stage = _KioskStage.capturing);
-      final photo = await controller.takePicture();
-      final bytes = await photo.readAsBytes();
+      Uint8List? bytes;
+      List<double>? descriptor;
+      for (var attempt = 0; attempt < 3 && descriptor == null; attempt++) {
+        final photo = await controller.takePicture();
+        bytes = await photo.readAsBytes();
+        descriptor = await faceDescriptorFromDataUrl('data:image/jpeg;base64,${base64Encode(bytes)}');
+        if (descriptor == null) await Future.delayed(const Duration(milliseconds: 800));
+        if (!mounted) return;
+      }
       await controller.dispose();
       if (!mounted) return;
       setState(() {
@@ -146,14 +155,27 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
         _capturedPhotoBytes = bytes;
         _stage = _KioskStage.verifying;
       });
+      if (descriptor == null) {
+        setState(() {
+          _stage = _KioskStage.error;
+          _errorMessage = 'ไม่พบใบหน้าในภาพ กรุณาเริ่มใหม่และมองกล้องตรง ๆ';
+        });
+        return;
+      }
 
-      final base64Photo = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-      await apiClient.post('/kiosk/session/$_sessionId/verify-face', {'photo_base64': base64Photo});
+      final base64Photo = 'data:image/jpeg;base64,${base64Encode(bytes!)}';
+      await apiClient.post('/kiosk/session/$_sessionId/verify-face', {'photo_base64': base64Photo, 'face_descriptor': descriptor});
       final data = await apiClient.post('/kiosk/session/$_sessionId/complete');
       if (!mounted) return;
       setState(() {
         _stage = _KioskStage.success;
         _result = data;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stage = _KioskStage.error;
+        _errorMessage = e.message;
       });
     } catch (e) {
       if (!mounted) return;

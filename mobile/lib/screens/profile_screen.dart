@@ -6,6 +6,7 @@ import '../services/app_state.dart';
 import '../theme.dart';
 import 'login_screen.dart';
 import 'admin_screen.dart';
+import 'face_enroll_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -99,6 +100,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(width: 10),
                       _StatBox(label: 'ภารกิจ', value: '${stats?.missionsCompleted ?? 0}'),
                     ],
+                  ),
+                  const SizedBox(height: 20),
+                  Card(
+                    child: ListTile(
+                      leading: Icon(user?.hasFace == true ? Icons.face : Icons.face_retouching_off, color: user?.hasFace == true ? AppColors.success : Colors.orange),
+                      title: Text(user?.hasFace == true ? 'ใบหน้าลงทะเบียนแล้ว' : 'ยังไม่ได้ลงทะเบียนใบหน้า'),
+                      subtitle: Text(user?.hasFace == true ? 'แตะเพื่อสแกนใหม่' : 'จำเป็นสำหรับการเช็คอินที่ Kiosk'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FaceEnrollScreen())),
+                    ),
                   ),
                   if (user?.isAdmin == true) ...[
                     const SizedBox(height: 20),

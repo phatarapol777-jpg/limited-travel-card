@@ -32,6 +32,58 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js" defer></script>
+  <script>
+    // Browser-side face descriptor helper used by registration and the check-in kiosk.
+    // Returns a JSON string of 128 numbers, or null when no face is found.
+    window.travelFace = (function () {
+      const MODELS = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/';
+      let ready = null;
+      function waitForLib() {
+        return new Promise((resolve, reject) => {
+          const started = Date.now();
+          (function check() {
+            if (window.faceapi) return resolve();
+            if (Date.now() - started > 20000) return reject(new Error('face library failed to load'));
+            setTimeout(check, 100);
+          })();
+        });
+      }
+      function ensureModels() {
+        if (!ready) {
+          ready = (async () => {
+            await waitForLib();
+            await faceapi.tf.setBackend('webgl').catch(() => {});
+            await faceapi.tf.ready();
+            await Promise.all([
+              faceapi.nets.tinyFaceDetector.loadFromUri(MODELS),
+              faceapi.nets.faceLandmark68Net.loadFromUri(MODELS),
+              faceapi.nets.faceRecognitionNet.loadFromUri(MODELS),
+            ]);
+          })().catch((e) => { ready = null; throw e; });
+        }
+        return ready;
+      }
+      function loadImage(dataUrl) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('bad image'));
+          img.src = dataUrl;
+        });
+      }
+      return {
+        preload: () => ensureModels().then(() => true).catch(() => false),
+        descriptorFromDataUrl: async function (dataUrl) {
+          await ensureModels();
+          const img = await loadImage(dataUrl);
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
+          const result = await faceapi.detectSingleFace(img, opts).withFaceLandmarks().withFaceDescriptor();
+          return result ? JSON.stringify(Array.from(result.descriptor)) : null;
+        },
+      };
+    })();
+  </script>
   <title>Limited Travel Card</title>
   <link rel="manifest" href="manifest.json">
 </head>

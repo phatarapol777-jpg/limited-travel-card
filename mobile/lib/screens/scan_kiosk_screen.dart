@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../widgets/travel_card_tile.dart';
+import 'face_enroll_screen.dart';
 
 enum _ScanStage { scanning, connecting, waitingKiosk, success, error }
 
@@ -21,6 +22,7 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
   _ScanStage _stage = _ScanStage.scanning;
   String? _sessionId;
   String? _errorMessage;
+  bool _needsFace = false;
   Map<String, dynamic>? _result;
   Timer? _pollTimer;
   bool _handledDetection = false;
@@ -50,6 +52,7 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
       setState(() {
         _stage = _ScanStage.error;
         _errorMessage = e.message;
+        _needsFace = e.code == 'no_face_enrolled';
       });
     } catch (e) {
       setState(() {
@@ -76,6 +79,12 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
           _stage = _ScanStage.error;
           _errorMessage = 'เซสชันหมดอายุ กรุณาลองใหม่';
         });
+      } else if (status == 'face_mismatch') {
+        _pollTimer?.cancel();
+        setState(() {
+          _stage = _ScanStage.error;
+          _errorMessage = 'ใบหน้าไม่ตรงกับที่ลงทะเบียนไว้ ไม่สามารถเช็คอินได้';
+        });
       }
     } catch (_) {
       // transient network hiccup, keep polling
@@ -88,6 +97,7 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
       _stage = _ScanStage.scanning;
       _sessionId = null;
       _errorMessage = null;
+      _needsFace = false;
       _result = null;
       _handledDetection = false;
     });
@@ -198,6 +208,17 @@ class _ScanKioskScreenState extends State<ScanKioskScreen> {
                 const SizedBox(height: 12),
                 Text(_errorMessage ?? 'เกิดข้อผิดพลาด', textAlign: TextAlign.center),
                 const SizedBox(height: 20),
+                if (_needsFace) ...[
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.face),
+                    label: const Text('ลงทะเบียนใบหน้า'),
+                    onPressed: () async {
+                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FaceEnrollScreen()));
+                      if (mounted) _retry();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 ElevatedButton(onPressed: _retry, child: const Text('ลองใหม่')),
               ],
             ),

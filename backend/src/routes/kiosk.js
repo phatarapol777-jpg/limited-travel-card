@@ -5,6 +5,18 @@ const { awardCheckin } = require('../services/checkinService');
 
 const router = express.Router();
 const SESSION_TTL_SECONDS = 180;
+// Euclidean distance between 128-d face descriptors; lower = more similar.
+const FACE_MATCH_THRESHOLD = parseFloat(process.env.FACE_MATCH_THRESHOLD) || 0.5;
+
+function faceDistance(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2;
+  return Math.sqrt(sum);
+}
+
+function validDescriptor(d) {
+  return Array.isArray(d) && d.length === 128 && d.every((n) => typeof n === 'number' && Number.isFinite(n));
+}
 
 function getSessionOrRespond404(req, res) {
   const session = db.prepare('SELECT * FROM checkin_sessions WHERE session_id = ?').get(req.params.id);
@@ -53,6 +65,9 @@ router.post('/session/:id/scan', authMiddleware, (req, res) => {
   const session = getSessionOrRespond404(req, res);
   if (!session) return;
   if (session.status !== 'awaiting_scan') return res.status(400).json({ error: 'เซสชันนี้ถูกใช้ไปแล้วหรือหมดอายุ' });
+  if (!req.user.face_descriptor) {
+    return res.status(409).json({ code: 'no_face_enrolled', error: 'ยังไม่ได้ลงทะเบียนใบหน้า กรุณาสแกนใบหน้าที่หน้าโปรไฟล์ก่อนเช็คอิน' });
+  }
 
   db.prepare("UPDATE checkin_sessions SET status = 'awaiting_face', user_id = ? WHERE session_id = ?")
     .run(req.user.user_id, session.session_id);
@@ -65,9 +80,22 @@ router.post('/session/:id/verify-face', (req, res) => {
   if (!session) return;
   if (session.status !== 'awaiting_face') return res.status(400).json({ error: 'สถานะเซสชันไม่ถูกต้อง' });
 
-  const { photo_base64 } = req.body || {};
-  db.prepare("UPDATE checkin_sessions SET status = 'verified', face_photo = ? WHERE session_id = ?")
-    .run(photo_base64 || null, session.session_id);
+  const { photo_base64, face_descriptor } = req.body || {};
+  const enrolled = db.prepare('SELECT face_descriptor FROM users WHERE user_id = ?').get(session.user_id);
+  if (!enrolled || !enrolled.face_descriptor) {
+    db.prepare("UPDATE checkin_sessions SET status = 'no_face_enrolled' WHERE session_id = ?").run(session.session_id);
+    return res.status(409).json({ status: 'no_face_enrolled', error: 'ผู้ใช้ยังไม่ได้ลงทะเบียนใบหน้า' });
+  }
+  if (!validDescriptor(face_descriptor)) {
+    return res.status(400).json({ error: 'ไม่พบใบหน้าในภาพที่ถ่าย กรุณาลองใหม่' });
+  }
+  const distance = faceDistance(JSON.parse(enrolled.face_descriptor), face_descriptor);
+  const photo = typeof photo_base64 === 'string' && photo_base64.length < 1_500_000 ? photo_base64 : null;
+  if (distance > FACE_MATCH_THRESHOLD) {
+    db.prepare("UPDATE checkin_sessions SET status = 'face_mismatch', face_photo = ? WHERE session_id = ?").run(photo, session.session_id);
+    return res.status(403).json({ status: 'face_mismatch', error: 'ใบหน้าไม่ตรงกับที่ลงทะเบียนไว้' });
+  }
+  db.prepare("UPDATE checkin_sessions SET status = 'verified', face_photo = ? WHERE session_id = ?").run(photo, session.session_id);
   res.json({ status: 'verified' });
 });
 

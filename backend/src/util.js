@@ -41,8 +41,8 @@ function adminMiddleware(req, res, next) {
 
 function publicUser(user) {
   if (!user) return null;
-  const { password_hash, password_salt, ...rest } = user;
-  return rest;
+  const { password_hash, password_salt, face_data, face_photo, face_descriptor, google_sub, ...rest } = user;
+  return { ...rest, has_face: !!face_descriptor };
 }
 
 module.exports = { newId, hashPassword, verifyPassword, createSession, authMiddleware, adminMiddleware, publicUser };
