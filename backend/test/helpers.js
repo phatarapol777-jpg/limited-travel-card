@@ -16,11 +16,11 @@ function freePort() {
   });
 }
 
-async function startServer() {
+async function startServer(extraEnv = {}) {
   const port = await freePort();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-srv-'));
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], {
-    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, BACKUP: 'off', KIOSK_SECRET: 'test-secret' },
+    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, BACKUP: 'off', KIOSK_SECRET: 'test-secret', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';

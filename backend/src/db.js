@@ -362,6 +362,15 @@ CREATE TABLE IF NOT EXISTS user_pins (
 );
 `);
 
+db.exec(`
+-- Admin-editable switches and numbers (see services/settings.js).
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`);
+
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 

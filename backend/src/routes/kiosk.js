@@ -115,7 +115,7 @@ router.post('/:code/session/:id/result', kioskAuth, (req, res) => {
     if (!checks.face) reasons.push(`ใบหน้าไม่ตรง (ความเหมือน ${score}% ต่ำกว่า ${K.FACE_PASS_SCORE}%)`);
   }
 
-  checks.environment = !K.ENV_CHECK_ENABLED || session.env_ok === 1;
+  checks.environment = !K.envCheckEnabled() || session.env_ok === 1;
   if (!checks.environment) reasons.push('ตรวจสภาพแวดล้อมไม่ผ่าน (มือถือไม่ได้อยู่ใกล้ตู้)');
 
   const verified = Object.values(checks).every(Boolean);
@@ -191,12 +191,12 @@ router.post('/session/:id/telemetry', authMiddleware, (req, res) => {
   const kioskLat = kiosk.last_lat ?? location.latitude;
   const kioskLng = kiosk.last_lng ?? location.longitude;
   const distance = hasGps ? Math.round(K.haversineMeters(lat, lng, kioskLat, kioskLng)) : null;
-  const geoMatch = distance !== null && distance <= K.GEO_RADIUS_M;
-  const ok = !K.ENV_CHECK_ENABLED || ipMatch || geoMatch;
+  const geoMatch = distance !== null && distance <= K.geoRadiusM();
+  const ok = !K.envCheckEnabled() || ipMatch || geoMatch;
 
   db.prepare('UPDATE checkin_sessions SET env_ok = ?, phone_ip = ?, phone_lat = ?, phone_lng = ? WHERE session_id = ?')
     .run(ok ? 1 : 0, req.ip, hasGps ? lat : null, hasGps ? lng : null, session.session_id);
-  res.json({ environment_ok: ok, same_network: ipMatch, distance_m: distance, radius_m: K.GEO_RADIUS_M });
+  res.json({ environment_ok: ok, same_network: ipMatch, distance_m: distance, radius_m: K.geoRadiusM() });
 });
 
 router.get('/session/:id', authMiddleware, (req, res) => {

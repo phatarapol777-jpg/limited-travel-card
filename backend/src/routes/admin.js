@@ -241,6 +241,24 @@ router.get('/audit', (req, res) => {
   res.json({ audit });
 });
 
+router.get('/settings', (req, res) => {
+  res.json({ settings: require('../services/settings').all() });
+});
+
+router.put('/settings', (req, res) => {
+  const settings = require('../services/settings');
+  const changes = req.body || {};
+  for (const [key, value] of Object.entries(changes)) {
+    const err = settings.set(key, value);
+    if (err) return res.status(400).json({ error: `${key}: ${err}` });
+  }
+  res.json({ settings: settings.all() });
+});
+
+router.get('/backup-status', (req, res) => {
+  res.json(require('../services/backup').status());
+});
+
 // ---- quest requests: review, approve (creates the signed QR) or reject with a reason -------------------------------
 router.get('/quests', (req, res) => {
   const { QUEST_SELECT, questView } = require('./quests');

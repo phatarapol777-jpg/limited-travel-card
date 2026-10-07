@@ -12,6 +12,7 @@ async function main() {
   require('./seed')();
   require('./services/kioskService').ensureKioskCodes();
   backup.start(db);
+  require('./services/maintenance').start();
   const { expireTrades } = require('./services/tradeService');
   setInterval(() => { try { expireTrades(); } catch (e) { console.error('expireTrades', e.message); } }, 5 * 60 * 1000).unref();
 
@@ -27,7 +28,8 @@ async function main() {
     next();
   });
 
-  app.get('/api/health', (req, res) => res.json({ ok: true }));
+  const version = (process.env.RENDER_GIT_COMMIT || 'dev').slice(0, 7);
+  app.get('/api/health', (req, res) => res.json({ ok: true, version }));
 
   app.use('/api/auth', require('./routes/auth'));
   app.use('/api/catalog', require('./routes/catalog'));

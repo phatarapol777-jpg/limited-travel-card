@@ -38,8 +38,9 @@ const FACE_PASS_SCORE = 100 - SCORE_SLOPE * FACE_MATCH_THRESHOLD;
 const QR_TIME_WINDOW_S = 180;
 const BLE_TOKEN_MAX_AGE_S = 180;
 const HMAC_LEN = 12;
-const GEO_RADIUS_M = parseInt(process.env.KIOSK_GEO_RADIUS_M, 10) || 300;
-const ENV_CHECK_ENABLED = String(process.env.ENV_CHECK || 'on').toLowerCase() !== 'off';
+const settings = require('./settings');
+const geoRadiusM = () => settings.get('kiosk_geo_radius_m');
+const envCheckEnabled = () => settings.get('env_check');
 
 function faceDistance(a, b) {
   let sum = 0;
@@ -114,5 +115,5 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 module.exports = {
   kioskKey, ensureKioskCodes, nextKioskCode, faceDistance, similarityScore, validDescriptor, qrHmac, checkQr, safeEqual,
   sameNetwork, haversineMeters, normalizeIp,
-  FACE_MATCH_THRESHOLD, FACE_PASS_SCORE, QR_TIME_WINDOW_S, BLE_TOKEN_MAX_AGE_S, GEO_RADIUS_M, ENV_CHECK_ENABLED, HMAC_LEN,
+  FACE_MATCH_THRESHOLD, FACE_PASS_SCORE, QR_TIME_WINDOW_S, BLE_TOKEN_MAX_AGE_S, geoRadiusM, envCheckEnabled, HMAC_LEN,
 };

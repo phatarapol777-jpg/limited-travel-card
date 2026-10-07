@@ -12,6 +12,9 @@ function parseFace(body) {
   return { descriptor: JSON.stringify(face_descriptor) };
 }
 
+const limiter = require('../services/loginLimiter');
+const { deleteAccount } = require('../services/accountService');
+
 const router = express.Router();
 
 router.post('/register', (req, res) => {
@@ -37,10 +40,15 @@ router.post('/register', (req, res) => {
 
 router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
+  if (limiter.isLimited(username)) {
+    return res.status(429).json({ error: 'ลองเข้าสู่ระบบผิดหลายครั้ง กรุณารอสักครู่ (ไม่เกิน 10 นาที) แล้วลองใหม่' });
+  }
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user || !verifyPassword(password || '', user.password_salt, user.password_hash)) {
+    limiter.recordFailure(username);
     return res.status(401).json({ error: 'Invalid username or password' });
   }
+  limiter.clear(username);
   const token = createSession(user.user_id);
   res.json({ token, user: publicUser(user) });
 });
@@ -111,11 +119,52 @@ router.delete('/face', authMiddleware, (req, res) => {
   res.json({ has_face: false });
 });
 
+const MIN_PASSWORD_LENGTH = 8;
+
+// Change your own password. All your other sessions end; this one stays signed in.
+router.post('/change-password', authMiddleware, (req, res) => {
+  const { current_password, new_password } = req.body || {};
+  if (typeof new_password !== 'string' || new_password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `รหัสผ่านใหม่ต้องยาวอย่างน้อย ${MIN_PASSWORD_LENGTH} ตัวอักษร` });
+  }
+  if (new_password.length > 200) return res.status(400).json({ error: 'รหัสผ่านยาวเกินไป' });
+  if (limiter.isLimited(req.user.username)) return res.status(429).json({ error: 'ลองผิดหลายครั้ง กรุณารอสักครู่แล้วลองใหม่' });
+  if (typeof current_password !== 'string' || !verifyPassword(current_password, req.user.password_salt, req.user.password_hash)) {
+    limiter.recordFailure(req.user.username);
+    return res.status(400).json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
+  }
+  if (new_password === current_password) return res.status(400).json({ error: 'รหัสผ่านใหม่ต้องต่างจากรหัสเดิม' });
+  const { hash, salt } = hashPassword(new_password);
+  db.transaction(() => {
+    db.prepare('UPDATE users SET password_hash = ?, password_salt = ? WHERE user_id = ?').run(hash, salt, req.user.user_id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.user_id, req.token);
+  })();
+  limiter.clear(req.user.username);
+  res.json({ status: 'changed' });
+});
+
+router.post('/logout', authMiddleware, (req, res) => {
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(req.token);
+  res.json({ status: 'signed_out' });
+});
+
+// Delete your account (anonymises it: see services/accountService.js). Type your username to confirm.
+router.post('/delete-account', authMiddleware, (req, res) => {
+  if (req.user.is_admin) return res.status(403).json({ error: 'ลบบัญชีแอดมินไม่ได้' });
+  if ((req.body || {}).confirm_username !== req.user.username) {
+    return res.status(400).json({ error: 'พิมพ์ Username ของคุณให้ถูกต้องเพื่อยืนยันการลบ' });
+  }
+  deleteAccount(req.user.user_id);
+  res.json({ status: 'deleted' });
+});
+
 router.get('/me', authMiddleware, (req, res) => {
   const cardCount = db.prepare('SELECT COUNT(*) AS c FROM all_cards WHERE owner_user_id = ?').get(req.user.user_id).c;
   const historyCount = db.prepare('SELECT COUNT(*) AS c FROM travel_history WHERE user_id = ? AND status = ?').get(req.user.user_id, 'success').c;
   const missionCount = db.prepare('SELECT COUNT(*) AS c FROM user_missions WHERE user_id = ?').get(req.user.user_id).c;
-  res.json({ user: publicUser(req.user), stats: { cards: cardCount, places_visited: historyCount, missions_completed: missionCount } });
+  const user = publicUser(req.user);
+  if (req.user.is_admin) user.using_default_password = verifyPassword('admin1234', req.user.password_salt, req.user.password_hash);
+  res.json({ user, stats: { cards: cardCount, places_visited: historyCount, missions_completed: missionCount } });
 });
 
 module.exports = router;

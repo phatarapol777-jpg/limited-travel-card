@@ -9,7 +9,8 @@ const { derive, dataDir } = require('../secret');
 
 const URL = process.env.BACKUP_URL || 'http://202.28.34.205:8080/273/backup.php';
 const ENABLED = String(process.env.BACKUP || 'on').toLowerCase() !== 'off' && !!URL;
-const INTERVAL_MS = 15000;
+const INTERVAL_MS = 15000; // how often we check whether something changed
+const MIN_GAP_MS = 60000; // but never upload two snapshots closer together than this (each one is the whole database)
 const MAGIC = Buffer.from('TCB1');
 const token = derive('backup-token').toString('hex');
 const key = derive('backup-key');
@@ -17,6 +18,8 @@ const key = derive('backup-key');
 let dirty = false;
 let uploading = false;
 let uploadedOnce = false;
+let lastUploadAt = 0;
+const state = { lastSuccessAt: null, lastErrorAt: null, lastError: null, lastSizeKb: null, uploads: 0 };
 let blocked = false; // true when a restore failed: never overwrite the stored snapshot with a fresh database
 let db = null;
 
@@ -61,10 +64,12 @@ async function restoreIfMissing() {
   console.error('[backup] could not restore; starting fresh and NOT uploading, so the stored snapshot stays safe:', lastError && lastError.message);
 }
 
-async function upload() {
+async function upload(force = false) {
   if (!ENABLED || blocked || !db || uploading || !dirty) return;
+  if (!force && Date.now() - lastUploadAt < MIN_GAP_MS) return; // still dirty: the next tick after the gap uploads it
   uploading = true;
   dirty = false;
+  lastUploadAt = Date.now();
   try {
     const blob = encrypt(zlib.gzipSync(db.serialize()));
     const res = await fetch(URL, {
@@ -78,8 +83,13 @@ async function upload() {
     if (blob.length > 60 * 1024 * 1024) console.error(`[backup] WARNING: snapshot is ${kb} KB, close to the host's 100 MB limit`);
     else if (kb > 4096 || !uploadedOnce) console.log(`[backup] uploaded ${kb} KB`);
     uploadedOnce = true;
+    state.lastSuccessAt = new Date().toISOString();
+    state.lastSizeKb = kb;
+    state.uploads += 1;
   } catch (err) {
     dirty = true; // try again on the next tick
+    state.lastError = err.message;
+    state.lastErrorAt = new Date().toISOString();
     console.error('[backup] upload failed:', err.message);
   } finally {
     uploading = false;
@@ -102,7 +112,12 @@ function start(database) {
 async function flush() {
   dirty = dirty || ENABLED;
   uploading = false;
-  await upload();
+  await upload(true);
 }
 
-module.exports = { restoreIfMissing, start, markDirty, flush, encrypt, decrypt };
+/** For the admin dashboard: is the safety net working? */
+function status() {
+  return { enabled: ENABLED, blocked, pending_changes: dirty, ...state };
+}
+
+module.exports = { restoreIfMissing, start, markDirty, flush, status, encrypt, decrypt };
