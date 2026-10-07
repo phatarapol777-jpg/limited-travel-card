@@ -27,6 +27,23 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
   String _baseId = _savedBase;
   Set<String> _overlayIds = {..._savedOverlays};
   final MapController _mapController = MapController();
+  double _zoom = 5.4;
+
+  /// Attractions: a small dot when the whole country is in view, a small icon from province level, bigger as you get closer.
+  double _locSize(double z) => z < 7 ? 14 : (z < 10 ? 28 : (z < 14 ? 34 : 40));
+
+  /// Shops are only drawn once you are zoomed in close (like points of interest on a street map), and grow a little as you zoom.
+  double _shopSize(double z) => z < 11 ? 0 : (z < 13 ? 24 : (z < 15 ? 30 : 36));
+
+  void _zoomChanged(double z) {
+    final changed = _locSize(z) != _locSize(_zoom) || _shopSize(z) != _shopSize(_zoom);
+    _zoom = z;
+    if (changed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
   Timer? _refreshTimer;
   List<TravelLocation> _locations = [];
   List<Mission> _missions = [];
@@ -195,9 +212,10 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                       Positioned.fill(
                         child: FlutterMap(
                           mapController: _mapController,
-                          options: const MapOptions(
-                            initialCenter: ll.LatLng(15.5, 101.0),
+                          options: MapOptions(
+                            initialCenter: const ll.LatLng(15.5, 101.0),
                             initialZoom: 5.4,
+                            onPositionChanged: (camera, _) => _zoomChanged(camera.zoom),
                           ),
                           children: [
                             ...mapTileLayers(baseById(_baseId), _overlayIds),
@@ -205,69 +223,25 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                               markers: _locations
                                   .map(
                                     (loc) => Marker(
-                                      point: ll.LatLng(
-                                        loc.latitude,
-                                        loc.longitude,
-                                      ),
-                                      width: 54,
-                                      height: 54,
-                                      child: GestureDetector(
-                                        onTap: () => _openLocationSheet(loc),
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: AppColors.navy,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 2.5,
-                                            ),
-                                            boxShadow: const [
-                                              BoxShadow(
-                                                color: Colors.black38,
-                                                blurRadius: 5,
-                                              ),
-                                            ],
-                                          ),
-                                          clipBehavior: Clip.antiAlias,
-                                          child: loc.pinImageUrl != null
-                                              ? Image.network(
-                                                  loc.pinImageUrl!,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) =>
-                                                      Icon(
-                                                        iconFor(loc.icon),
-                                                        color: AppColors.gold,
-                                                        size: 22,
-                                                      ),
-                                                  loadingBuilder:
-                                                      (c, child, p) => p == null
-                                                      ? child
-                                                      : Icon(
-                                                          iconFor(loc.icon),
-                                                          color: AppColors.gold,
-                                                          size: 22,
-                                                        ),
-                                                )
-                                              : Icon(
-                                                  iconFor(loc.icon),
-                                                  color: AppColors.gold,
-                                                  size: 22,
-                                                ),
-                                        ),
-                                      ),
+                                      point: ll.LatLng(loc.latitude, loc.longitude),
+                                      width: _locSize(_zoom) + 6,
+                                      height: _locSize(_zoom) + 6,
+                                      child: GestureDetector(onTap: () => _openLocationSheet(loc), child: _LocationMarker(loc: loc, size: _locSize(_zoom))),
                                     ),
                                   )
                                   .toList(),
                             ),
                             MarkerLayer(
-                              markers: _visibleShops
-                                  .map((s) => Marker(
-                                        point: ll.LatLng(s.latitude, s.longitude),
-                                        width: 44,
-                                        height: 44,
-                                        child: GestureDetector(onTap: () => showShopDetail(context, s), child: _ShopMarker(shop: s)),
-                                      ))
-                                  .toList(),
+                              markers: _shopSize(_zoom) == 0
+                                  ? const []
+                                  : _visibleShops
+                                      .map((s) => Marker(
+                                            point: ll.LatLng(s.latitude, s.longitude),
+                                            width: _shopSize(_zoom) + 6,
+                                            height: _shopSize(_zoom) + 6,
+                                            child: GestureDetector(onTap: () => showShopDetail(context, s), child: _ShopMarker(shop: s, size: _shopSize(_zoom))),
+                                          ))
+                                      .toList(),
                             ),
                           ],
                         ),
@@ -488,34 +462,63 @@ class _ExternalServiceCard extends StatelessWidget {
   }
 }
 
+class _LocationMarker extends StatelessWidget {
+  final TravelLocation loc;
+  final double size;
+  const _LocationMarker({required this.loc, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Icon(iconFor(loc.icon), color: AppColors.gold, size: size * 0.55);
+    return Container(
+      margin: const EdgeInsets.all(3),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppColors.navy,
+        shape: BoxShape.circle,
+        border: Border.all(color: size < 20 ? AppColors.gold : Colors.white, width: size < 20 ? 2 : 2),
+        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 3)],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: size < 20
+          ? null
+          : (loc.pinImageUrl != null
+              ? Image.network(loc.pinImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback, loadingBuilder: (c, child, p) => p == null ? child : fallback)
+              : fallback),
+    );
+  }
+}
+
 class _ShopMarker extends StatelessWidget {
   final ShopPin shop;
-  const _ShopMarker({required this.shop});
+  final double size;
+  const _ShopMarker({required this.shop, required this.size});
 
   @override
   Widget build(BuildContext context) {
     final cat = shop.cat;
     return Stack(clipBehavior: Clip.none, children: [
       Container(
-        width: 38,
-        height: 38,
+        width: size,
+        height: size,
         margin: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: cat.color,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2.5),
-          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 3)],
         ),
-        child: Icon(cat.icon, color: Colors.white, size: 20),
+        child: Icon(cat.icon, color: Colors.white, size: size * 0.55),
       ),
       if (shop.hasPrivilege)
         Positioned(
           right: -1,
           top: -1,
           child: Container(
-            padding: const EdgeInsets.all(3),
+            padding: EdgeInsets.all(size < 30 ? 2 : 3),
             decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)),
-            child: const Icon(Icons.card_giftcard, size: 11, color: Colors.black87),
+            child: Icon(Icons.card_giftcard, size: size < 30 ? 8 : 11, color: Colors.black87),
           ),
         ),
     ]);
