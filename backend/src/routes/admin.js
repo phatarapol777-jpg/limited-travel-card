@@ -187,6 +187,7 @@ router.delete('/locations/:id', (req, res) => {
 
 router.get('/stats', (req, res) => {
   const count = (sql) => db.prepare(sql).get().c;
+  const byStatus = (table, column, statuses) => Object.fromEntries(statuses.map((st) => [st.toLowerCase(), count(`SELECT COUNT(*) AS c FROM ${table} WHERE ${column} = '${st}'`)]));
   const topLocations = db.prepare(`SELECT l.name, l.province, COUNT(h.history_id) AS checkins
     FROM locations l LEFT JOIN travel_history h ON h.location_id = l.location_id AND h.status = 'success'
     GROUP BY l.location_id ORDER BY checkins DESC, l.name LIMIT 5`).all();
@@ -198,6 +199,20 @@ router.get('/stats', (req, res) => {
     booking_requests: count('SELECT COUNT(*) AS c FROM booking_requests'),
     kiosk_sessions_completed: count("SELECT COUNT(*) AS c FROM checkin_sessions WHERE status = 'completed'"),
     top_locations: topLocations,
+    // read-only summary of the newer modules (the PHP admin shows it; review and moderation stay in the Node dashboard)
+    modules: {
+      quests: byStatus('quests', 'status', ['pending', 'approved', 'rejected', 'closed']),
+      merchants: {
+        ...byStatus('merchants', 'approval_status', ['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED']),
+        revisions_waiting: count('SELECT COUNT(*) AS c FROM merchants WHERE pending_revision IS NOT NULL'),
+        with_privileges: count("SELECT COUNT(DISTINCT p.merchant_id) AS c FROM merchant_privileges p JOIN merchants m ON m.merchant_id = p.merchant_id WHERE m.approval_status = 'APPROVED'"),
+      },
+      blind_packs: {
+        designs: count("SELECT COUNT(*) AS c FROM card_templates WHERE card_type = 'PHYSICAL_BLIND_PACK'"),
+        order_interest: count('SELECT COUNT(*) AS c FROM physical_order_intents'),
+      },
+      cards_voided: count("SELECT COUNT(*) AS c FROM all_cards WHERE activation_status = 'VOIDED'"),
+    },
   });
 });
 

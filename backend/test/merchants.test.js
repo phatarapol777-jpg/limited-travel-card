@@ -308,3 +308,15 @@ test('the old partner shops became approved merchants (and the old endpoints sti
   assert.equal((await s.call('GET', '/catalog/shops')).status, 200);
   assert.equal((await s.call('GET', `/catalog/locations/${locId}`)).status, 200);
 });
+
+test('admin stats carry a read-only summary of the newer modules (the PHP overview reads it)', async () => {
+  const st = (await s.call('GET', '/admin/stats', undefined, adm.token)).body;
+  assert.equal(typeof st.users, 'number', 'the old fields are still there');
+  assert.ok(st.modules);
+  assert.equal(st.modules.merchants.approved >= 5, true);
+  for (const k of ['pending', 'approved', 'rejected', 'suspended', 'revisions_waiting', 'with_privileges']) assert.equal(typeof st.modules.merchants[k], 'number', k);
+  for (const k of ['pending', 'approved', 'rejected', 'closed']) assert.equal(typeof st.modules.quests[k], 'number', k);
+  assert.equal(typeof st.modules.blind_packs.designs, 'number');
+  assert.equal(typeof st.modules.cards_voided, 'number');
+  assert.equal((await s.call('GET', '/admin/stats', undefined, owner.token)).status, 403);
+});

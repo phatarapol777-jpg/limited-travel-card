@@ -37,3 +37,12 @@ Nothing is pushed or deployed until the owner says so.
 ## Testing rules
 Backend tests for every phase (`npm test`), Flutter tests for pure logic, in-browser checks for the screens.
 Probes against the live server are read-only.
+
+## Status (2026-10-08)
+
+Phases 0-3 are implemented and committed locally; nothing after commit `592b671` has been pushed or deployed yet.
+
+- Phase 0 (platform): password change/logout/session expiry, login limiter, account deletion, maintenance jobs, settings table, backup throttle, health version.
+- Phase 1 (module gaps): quest edit/close and GPS check on claim, kiosk disable and key rotation, QR print sheet, card void, order-ready notice, community moderation.
+- Phase 2 (partner shops): backend (`/api/merchants`, admin review, media), Flutter (shop form with map pin and hours editor, my shops, map pins and filters, shop drawer, show-to-staff, partner perks on the card page), Node admin "ร้านค้า" tab.
+- Phase 3: `/api/admin/stats` carries `modules`, shown read-only on the PHP overview page. Re-upload `admin-php/index.php` and `admin-php/logout.php` after deploying the API.

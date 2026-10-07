@@ -8,6 +8,16 @@ $top = $pdo->query("SELECT l.name, l.province, (SELECT COUNT(*) FROM snap_checki
                     FROM snap_locations l ORDER BY n DESC, l.name LIMIT 5")->fetchAll();
 $last = $pdo->query('SELECT synced_at FROM sync_log ORDER BY synced_at DESC LIMIT 1')->fetchColumn();
 
+// Read-only summary of the newer modules, straight from the traveler API. Review and moderation stay in the Node dashboard.
+$modules = null;
+$modulesError = null;
+try {
+    $modules = admin_api('GET', '/admin/stats')['modules'] ?? null;
+} catch (Throwable $e) {
+    $modulesError = $e->getMessage();
+}
+$m = static fn(array $a, string $k): int => (int)($a[$k] ?? 0);
+
 page_header('ภาพรวม', 'index.php');
 ?>
 <div class="stats">
@@ -15,6 +25,19 @@ page_header('ภาพรวม', 'index.php');
   <div class="stat"><b><?= $count('snap_locations') ?></b><span>สถานที่</span></div>
   <div class="stat"><b><?= $count('snap_checkins') ?></b><span>เช็คอินสำเร็จ</span></div>
   <div class="stat"><b><?= $count('snap_bookings') ?></b><span>คำขอจอง</span></div>
+</div>
+<div class="panel">
+  <h3 style="margin-top:0">โมดูลใหม่ (ดูอย่างเดียว)</h3>
+  <?php if ($modules === null): ?>
+    <p class="muted">ยังโหลดข้อมูลโมดูลใหม่ไม่ได้<?= $modulesError ? ': ' . h($modulesError) : '' ?></p>
+  <?php else: $q = $modules['quests'] ?? []; $s = $modules['merchants'] ?? []; $b = $modules['blind_packs'] ?? []; ?>
+    <table><thead><tr><th>โมดูล</th><th>รออนุมัติ</th><th>เปิดใช้งาน</th><th>ไม่อนุมัติ</th><th>อื่น ๆ</th></tr></thead><tbody>
+      <tr><td>ภารกิจจากผู้ใช้</td><td><?= $m($q, 'pending') ?></td><td><?= $m($q, 'approved') ?></td><td><?= $m($q, 'rejected') ?></td><td>ปิดแล้ว <?= $m($q, 'closed') ?></td></tr>
+      <tr><td>ร้านค้าพันธมิตร</td><td><?= $m($s, 'pending') ?> (รอตรวจการแก้ไข <?= $m($s, 'revisions_waiting') ?>)</td><td><?= $m($s, 'approved') ?></td><td><?= $m($s, 'rejected') ?></td><td>ระงับ <?= $m($s, 'suspended') ?> · มีสิทธิประโยชน์ <?= $m($s, 'with_privileges') ?></td></tr>
+      <tr><td>การ์ดสุ่ม (ของจริง)</td><td>-</td><td>แบบการ์ด <?= $m($b, 'designs') ?></td><td>-</td><td>ผู้สนใจสั่งซื้อ <?= $m($b, 'order_interest') ?></td></tr>
+    </tbody></table>
+    <p class="muted">การ์ดที่ถูกยกเลิกโดยผู้ดูแล: <?= $m($modules, 'cards_voided') ?> ใบ · การอนุมัติและจัดการอยู่ที่ Admin Dashboard (/admin/) ของระบบหลัก</p>
+  <?php endif; ?>
 </div>
 <div class="panel">
   <h3 style="margin-top:0">สถานที่ที่มีคนเช็คอินมากที่สุด</h3>
