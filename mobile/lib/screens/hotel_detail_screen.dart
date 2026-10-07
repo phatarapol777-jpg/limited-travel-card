@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
+import 'mock_payment_screen.dart';
 
 class HotelDetailScreen extends StatefulWidget {
   final HotelOffer offer;
@@ -91,6 +92,15 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
   }
 
   Future<void> _confirmRequest() async {
+    final offer = widget.offer;
+    final paid = await openMockPayment(
+      context,
+      title: offer.hotelName,
+      lines: [if (widget.checkIn != null && widget.checkOut != null) 'เข้าพัก ${_fmtDate(widget.checkIn!)} ถึง ${_fmtDate(widget.checkOut!)}', if (_nameCtrl.text.trim().isNotEmpty) 'ผู้เข้าพัก ${_nameCtrl.text.trim()}'],
+      amount: offer.priceAmount,
+      currency: (offer.priceCurrency == null || offer.priceCurrency == 'THB') ? '฿' : offer.priceCurrency!,
+    );
+    if (paid == null || !mounted) return;
     setState(() => _requesting = true);
     try {
       await apiClient.post('/booking/request', {
@@ -98,7 +108,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
         'guest_name': _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ส่งคำขอจอง "${widget.offer.hotelName}" สำเร็จ')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('จอง "${widget.offer.hotelName}" สำเร็จ (ชำระเงินแบบจำลอง)')));
       Navigator.of(context).pop();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -261,7 +271,7 @@ class _HotelDetailScreenState extends State<HotelDetailScreen> {
                     icon: _requesting
                         ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.check),
-                    label: const Text('ยืนยันคำขอจอง'),
+                    label: const Text('จองและชำระเงิน'),
                     onPressed: _requesting ? null : _confirmRequest,
                   ),
                   if (offer.bookingUrl != null) ...[

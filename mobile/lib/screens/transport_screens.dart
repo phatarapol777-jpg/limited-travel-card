@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
+import 'mock_payment_screen.dart';
 
 String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _hm(String iso) => iso.length >= 16 ? iso.substring(11, 16) : iso;
@@ -17,16 +18,18 @@ String _baht(num v) {
   return '฿${b.toString()}';
 }
 
-Future<void> _sendRequest(BuildContext context, {required String kind, required String title, required num? price, required Map<String, dynamic> summary}) async {
+Future<void> _sendRequest(BuildContext context, {required String kind, required String title, required num? price, required Map<String, dynamic> summary, List<String> lines = const []}) async {
+  final paid = await openMockPayment(context, title: title, lines: lines, amount: price);
+  if (paid == null || !context.mounted) return;
   try {
-    await apiClient.post('/booking/transport/request', {'kind': kind, 'title': title, 'price': price, 'currency': 'THB', 'summary': summary});
+    await apiClient.post('/booking/transport/request', {'kind': kind, 'title': title, 'price': price, 'currency': 'THB', 'summary': {...summary, 'payment': paid.toJson()}});
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.check_circle, color: AppColors.success, size: 36),
-        title: const Text('ส่งคำขอจองแล้ว'),
-        content: const Text('บันทึกคำขอของคุณแล้ว ทีมงานจะติดต่อกลับเพื่อยืนยันการจอง'),
+        title: const Text('จองสำเร็จ'),
+        content: const Text('บันทึกการจองของคุณแล้ว (ชำระเงินแบบจำลอง) ทีมงานจะติดต่อกลับเพื่อยืนยัน'),
         actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('ตกลง'))],
       ),
     );
@@ -169,10 +172,13 @@ class _FlightsScreenState extends State<FlightsScreen> {
           const SizedBox(height: 18),
           ElevatedButton.icon(
             icon: const Icon(Icons.send),
-            label: const Text('ขอจองเที่ยวบินนี้'),
+            label: const Text('จองเที่ยวบินนี้'),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await _sendRequest(context, kind: 'flight', title: title, price: offer['price'] as num, summary: {'adults': _adults, 'cabin': _cabin, 'segments': segs});
+              await _sendRequest(context, kind: 'flight', title: title, price: offer['price'] as num, summary: {'adults': _adults, 'cabin': _cabin, 'segments': segs}, lines: [
+                'ผู้โดยสาร $_adults คน · ${_cabins[_cabin]}',
+                for (final sg in segs) '${_hm('${sg['departure']}')} ${(sg['from'] as Map)['code']} → ${_hm('${sg['arrival']}')} ${(sg['to'] as Map)['code']} · ${'${sg['departure']}'.substring(0, 10)}',
+              ]);
             },
           ),
           const SizedBox(height: 8),
@@ -454,7 +460,8 @@ class _CarsScreenState extends State<CarsScreen> {
         kind: 'car',
         title: '${car['title']} · ${_location!.name} ${_ymd(_pickUp)} ถึง ${_ymd(_dropOff)}',
         price: car['price'] as num?,
-        summary: {'car': car, 'place': _location!.name, 'pick_up': _ymd(_pickUp), 'drop_off': _ymd(_dropOff)});
+        summary: {'car': car, 'place': _location!.name, 'pick_up': _ymd(_pickUp), 'drop_off': _ymd(_dropOff)},
+        lines: ['รับรถ ${_thaiDate(_pickUp)} · คืนรถ ${_thaiDate(_dropOff)}', 'ใกล้ ${_location!.name}', if (car['supplier'] != null) 'ผู้ให้เช่า ${car['supplier']}']);
   }
 
   Widget _carCard(Map<String, dynamic> car) {
@@ -488,7 +495,7 @@ class _CarsScreenState extends State<CarsScreen> {
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: Text('${car['price_text'] ?? ''}  ${car['duration_text'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navy))),
-            ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(0, 38)), onPressed: () => _request(car), child: const Text('ขอจอง')),
+            ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(0, 38)), onPressed: () => _request(car), child: const Text('จอง')),
           ]),
         ]),
       ),
