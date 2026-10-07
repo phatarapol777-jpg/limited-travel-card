@@ -64,6 +64,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   String? _qrLabel;
   String? _latestQr;
   String _prompt = '';
+  int _step = 1; // 1 = read the phone's QR, 2 = scan the face
   String? _failure;
   EdgeDecision? _decision;
   int? _decisionMs;
@@ -240,6 +241,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _serverVerdict = null;
     _doorOpen = false;
     _failure = null;
+    _step = 1;
     _userName = session['user_name'] as String? ?? '';
     setState(() {
       _stage = _Stage.session;
@@ -252,20 +254,27 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     LivenessResult? live;
     try {
       await _openCameras();
+
+      // Step 1: read the QR on the traveler's phone.
+      if (mounted) setState(() => _prompt = 'วางมือถือที่แสดง QR ให้กล้องเห็น');
+      final qrDeadline = DateTime.now().add(const Duration(seconds: 60));
+      while (_latestQr == null && DateTime.now().isBefore(qrDeadline) && mounted && _stage == _Stage.session) {
+        await _readQr(userId);
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      if (_latestQr == null) throw LivenessException('ไม่พบ QR จากมือถือภายใน 60 วินาที กรุณาเริ่มใหม่');
+      if (mounted) setState(() => _prompt = 'อ่าน QR สำเร็จ ต่อไปสแกนใบหน้า');
+      await Future.delayed(const Duration(milliseconds: 1200));
+
+      // Step 2: scan the face (face the camera, then turn the head).
+      if (mounted) setState(() => _step = 2);
       live = await runLivenessCheck(
         _faceCamera!,
         onPrompt: (m) {
           if (mounted) setState(() => _prompt = m);
         },
         isActive: () => mounted && _stage == _Stage.session,
-        tick: () => _readQr(userId),
       );
-      final qrDeadline = DateTime.now().add(const Duration(seconds: 30));
-      while (_latestQr == null && DateTime.now().isBefore(qrDeadline) && mounted) {
-        if (mounted) setState(() => _prompt = 'วางมือถือที่แสดง QR ให้กล้องเห็น');
-        await _readQr(userId);
-        await Future.delayed(const Duration(milliseconds: 200));
-      }
       final envDeadline = DateTime.now().add(const Duration(seconds: 6));
       while (_environmentOk == null && DateTime.now().isBefore(envDeadline) && mounted) {
         if (mounted) setState(() => _prompt = 'กำลังรอสถานะสภาพแวดล้อมจากเซิร์ฟเวอร์...');
@@ -427,6 +436,19 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   Widget _text(String s, {double size = 14, bool bold = false, Color color = Colors.white, TextAlign align = TextAlign.center}) =>
       Text(s, textAlign: align, style: TextStyle(color: color, fontSize: size, fontWeight: bold ? FontWeight.bold : FontWeight.normal));
 
+  Widget _stepChip(String number, String label, bool active, bool done) {
+    final color = done ? Colors.greenAccent : (active ? AppColors.gold : Colors.white38);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      CircleAvatar(
+        radius: 11,
+        backgroundColor: color,
+        child: done ? const Icon(Icons.check, size: 14, color: Colors.black87) : Text(number, style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.bold)),
+      ),
+      const SizedBox(width: 6),
+      Text(label, style: TextStyle(color: active || done ? Colors.white : Colors.white54, fontSize: 13)),
+    ]);
+  }
+
   Widget _cameraPicker({required String? value, required List<DropdownMenuItem<String?>> items, required ValueChanged<String?> onChanged}) {
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
@@ -571,21 +593,24 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       case _Stage.session:
         final face = _faceCamera;
         final qr = _qrCamera;
+        // step 1 shows the camera that reads the QR, step 2 the camera that scans the face (the same one in single-camera mode)
+        final shown = _step == 1 ? (qr ?? face) : face;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _text('สวัสดีคุณ $_userName', size: 16, bold: true),
-            const SizedBox(height: 12),
-            _CameraBox(camera: face, caption: qr == null ? 'กล้องตู้ (ใบหน้า + QR)' : 'กล้องบน (ใบหน้า)'),
-            if (qr != null) ...[const SizedBox(height: 8), _CameraBox(camera: qr, caption: 'กล้องล่าง (QR)', height: 130)],
-            const SizedBox(height: 12),
-            _text(_prompt, size: 16, bold: true, color: AppColors.gold),
             const SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(_latestQr != null ? Icons.check_circle : Icons.qr_code_scanner, size: 16, color: _latestQr != null ? Colors.greenAccent : Colors.white54),
-              const SizedBox(width: 6),
-              _text(_latestQr != null ? 'อ่าน QR จากมือถือแล้ว' : 'ยังไม่พบ QR จากมือถือ', size: 12, color: Colors.white70),
+              _stepChip('1', 'สแกน QR', _step == 1, _latestQr != null),
+              const SizedBox(width: 10),
+              const Icon(Icons.arrow_forward, size: 16, color: Colors.white38),
+              const SizedBox(width: 10),
+              _stepChip('2', 'สแกนใบหน้า', _step == 2, false),
             ]),
+            const SizedBox(height: 12),
+            _CameraBox(camera: shown, caption: _step == 1 ? 'กล้องอ่าน QR' : 'กล้องสแกนใบหน้า'),
+            const SizedBox(height: 12),
+            _text(_prompt, size: 16, bold: true, color: AppColors.gold),
           ],
         );
 
@@ -652,8 +677,7 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 class _CameraBox extends StatelessWidget {
   final LiveCamera? camera;
   final String caption;
-  final double height;
-  const _CameraBox({required this.camera, required this.caption, this.height = 240});
+  const _CameraBox({required this.camera, required this.caption});
 
   @override
   Widget build(BuildContext context) {
@@ -664,7 +688,7 @@ class _CameraBox extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: SizedBox(
             width: double.infinity,
-            height: height,
+            height: 240,
             child: c != null
                 ? liveCameraView(c)
                 : const ColoredBox(color: Colors.black26, child: Center(child: CircularProgressIndicator(color: Colors.white))),
