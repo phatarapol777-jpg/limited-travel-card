@@ -7,6 +7,7 @@ import '../services/api_client.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
 import '../widgets/location_quests.dart';
+import '../widgets/map_layers.dart';
 import 'booking_screen.dart';
 import 'scan_kiosk_screen.dart';
 
@@ -17,7 +18,12 @@ class MapMissionsScreen extends StatefulWidget {
   State<MapMissionsScreen> createState() => MapMissionsScreenState();
 }
 
+String _savedBase = 'standard';
+Set<String> _savedOverlays = {};
+
 class MapMissionsScreenState extends State<MapMissionsScreen> {
+  String _baseId = _savedBase;
+  Set<String> _overlayIds = {..._savedOverlays};
   final MapController _mapController = MapController();
   Timer? _refreshTimer;
   List<TravelLocation> _locations = [];
@@ -31,7 +37,10 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
     super.initState();
     reload();
     // places added by an admin appear without reopening the app
-    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) => reload(silent: true));
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => reload(silent: true),
+    );
   }
 
   @override
@@ -53,9 +62,15 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
       final missionData = await apiClient.get('/catalog/missions');
       final shopData = await apiClient.get('/catalog/shops');
       setState(() {
-        _locations = (locData['locations'] as List).map((e) => TravelLocation.fromJson(e)).toList();
-        _missions = (missionData['missions'] as List).map((e) => Mission.fromJson(e)).toList();
-        _shops = (shopData['shops'] as List).map((e) => Shop.fromJson(e)).toList();
+        _locations = (locData['locations'] as List)
+            .map((e) => TravelLocation.fromJson(e))
+            .toList();
+        _missions = (missionData['missions'] as List)
+            .map((e) => Mission.fromJson(e))
+            .toList();
+        _shops = (shopData['shops'] as List)
+            .map((e) => Shop.fromJson(e))
+            .toList();
         _loading = false;
       });
     } catch (e) {
@@ -74,12 +89,16 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
   }
 
   void _openLocationSheet(TravelLocation loc) {
-    final missionsHere = _missions.where((m) => m.locationId == loc.locationId).toList();
+    final missionsHere = _missions
+        .where((m) => m.locationId == loc.locationId)
+        .toList();
     final shopsHere = _shops.where((s) => s.locationName == loc.name).toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.6,
         maxChildSize: 0.9,
@@ -94,23 +113,39 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                 children: [
                   CircleAvatar(
                     backgroundColor: AppColors.navy,
-                    backgroundImage: loc.pinImageUrl != null ? NetworkImage(loc.pinImageUrl!) : null,
-                    child: loc.pinImageUrl != null ? null : Icon(iconFor(loc.icon), color: Colors.white),
+                    backgroundImage: loc.pinImageUrl != null
+                        ? NetworkImage(loc.pinImageUrl!)
+                        : null,
+                    child: loc.pinImageUrl != null
+                        ? null
+                        : Icon(iconFor(loc.icon), color: Colors.white),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(loc.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text(loc.province, style: const TextStyle(color: Colors.grey)),
+                        Text(
+                          loc.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          loc.province,
+                          style: const TextStyle(color: Colors.grey),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(loc.description ?? '', style: const TextStyle(color: Colors.black87)),
+              Text(
+                loc.description ?? '',
+                style: const TextStyle(color: Colors.black87),
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -120,7 +155,11 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                       label: const Text('Check-in ที่นี่'),
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanKioskScreen(location: loc)));
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ScanKioskScreen(location: loc),
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -131,7 +170,11 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                       label: const Text('ค้นหาที่พัก'),
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookingScreen(location: loc)));
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => BookingScreen(location: loc),
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -140,29 +183,48 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
               const SizedBox(height: 20),
               LocationQuests(locationId: loc.locationId),
               if (missionsHere.isNotEmpty) ...[
-                const Text('ภารกิจ (Missions)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'ภารกิจ (Missions)',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
-                ...missionsHere.map((m) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(m.completed ? Icons.check_circle : Icons.flag_outlined,
-                          color: m.completed ? AppColors.success : Colors.grey),
-                      title: Text(m.title),
-                      subtitle: Text(m.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    )),
+                ...missionsHere.map(
+                  (m) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      m.completed ? Icons.check_circle : Icons.flag_outlined,
+                      color: m.completed ? AppColors.success : Colors.grey,
+                    ),
+                    title: Text(m.title),
+                    subtitle: Text(
+                      m.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
               ],
               if (shopsHere.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                const Text('ร้านค้าพันธมิตร', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'ร้านค้าพันธมิตร',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
-                ...shopsHere.map((s) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(iconFor(s.icon), color: AppColors.gold),
-                      title: Text(s.shopName),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                ...shopsHere.map(
+                  (s) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(iconFor(s.icon), color: AppColors.gold),
+                    title: Text(s.shopName),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         const Icon(Icons.star, size: 16, color: Colors.amber),
                         Text(' ${s.rating}'),
-                      ]),
-                    )),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -174,7 +236,9 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
   void _pickLocationForBooking() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -182,21 +246,33 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text('ค้นหาที่พักใกล้สถานที่ไหน', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text(
+                'ค้นหาที่พักใกล้สถานที่ไหน',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ),
             Flexible(
               child: ListView(
                 shrinkWrap: true,
                 children: _locations
-                    .map((loc) => ListTile(
-                          leading: CircleAvatar(backgroundColor: AppColors.navy, child: Icon(iconFor(loc.icon), color: Colors.white)),
-                          title: Text(loc.name),
-                          subtitle: Text(loc.province),
-                          onTap: () {
-                            Navigator.of(ctx).pop();
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookingScreen(location: loc)));
-                          },
-                        ))
+                    .map(
+                      (loc) => ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.navy,
+                          child: Icon(iconFor(loc.icon), color: Colors.white),
+                        ),
+                        title: Text(loc.name),
+                        subtitle: Text(loc.province),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => BookingScreen(location: loc),
+                            ),
+                          );
+                        },
+                      ),
+                    )
                     .toList(),
               ),
             ),
@@ -212,31 +288,46 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Travel Map & Missions'),
-        actions: [IconButton(icon: const Icon(Icons.refresh), tooltip: 'โหลดสถานที่ใหม่', onPressed: () => reload())],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'โหลดสถานที่ใหม่',
+            onPressed: () => reload(),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)))
-              : Column(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: FlutterMap(
-                        mapController: _mapController,
-                        options: const MapOptions(
-                          initialCenter: ll.LatLng(15.5, 101.0),
-                          initialZoom: 5.4,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.travelcard.mobile',
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(_error!, textAlign: TextAlign.center),
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: FlutterMap(
+                          mapController: _mapController,
+                          options: const MapOptions(
+                            initialCenter: ll.LatLng(15.5, 101.0),
+                            initialZoom: 5.4,
                           ),
-                          MarkerLayer(
-                            markers: _locations
-                                .map((loc) => Marker(
-                                      point: ll.LatLng(loc.latitude, loc.longitude),
+                          children: [
+                            ...mapTileLayers(baseById(_baseId), _overlayIds),
+                            MarkerLayer(
+                              markers: _locations
+                                  .map(
+                                    (loc) => Marker(
+                                      point: ll.LatLng(
+                                        loc.latitude,
+                                        loc.longitude,
+                                      ),
                                       width: 54,
                                       height: 54,
                                       child: GestureDetector(
@@ -245,78 +336,167 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
                                           decoration: BoxDecoration(
                                             color: AppColors.navy,
                                             shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 2.5),
-                                            boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 5)],
+                                            border: Border.all(
+                                              color: Colors.white,
+                                              width: 2.5,
+                                            ),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Colors.black38,
+                                                blurRadius: 5,
+                                              ),
+                                            ],
                                           ),
                                           clipBehavior: Clip.antiAlias,
                                           child: loc.pinImageUrl != null
                                               ? Image.network(
                                                   loc.pinImageUrl!,
                                                   fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) => Icon(iconFor(loc.icon), color: AppColors.gold, size: 22),
-                                                  loadingBuilder: (c, child, p) => p == null ? child : Icon(iconFor(loc.icon), color: AppColors.gold, size: 22),
+                                                  errorBuilder: (_, __, ___) =>
+                                                      Icon(
+                                                        iconFor(loc.icon),
+                                                        color: AppColors.gold,
+                                                        size: 22,
+                                                      ),
+                                                  loadingBuilder:
+                                                      (c, child, p) => p == null
+                                                      ? child
+                                                      : Icon(
+                                                          iconFor(loc.icon),
+                                                          color: AppColors.gold,
+                                                          size: 22,
+                                                        ),
                                                 )
-                                              : Icon(iconFor(loc.icon), color: AppColors.gold, size: 22),
+                                              : Icon(
+                                                  iconFor(loc.icon),
+                                                  color: AppColors.gold,
+                                                  size: 22,
+                                                ),
                                         ),
                                       ),
-                                    ))
-                                .toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: ListView(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        children: [
-                          _SectionHeader(title: 'สถานที่ทั้งหมด (${_locations.length})'),
-                          SizedBox(
-                            height: 44,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              children: _locations
-                                  .map((l) => Padding(
-                                        padding: const EdgeInsets.only(right: 8),
-                                        child: ActionChip(
-                                          avatar: Icon(iconFor(l.icon), size: 16, color: AppColors.navy),
-                                          label: Text(l.name),
-                                          onPressed: () => _goTo(l),
-                                        ),
-                                      ))
+                                    ),
+                                  )
                                   .toList(),
                             ),
-                          ),
-                          _SectionHeader(title: 'Booking services'),
-                          SizedBox(
-                            height: 76,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              children: [
-                                _ExternalServiceCard(label: 'Booking.com', icon: Icons.hotel, onTap: _pickLocationForBooking),
-                                const _ExternalServiceCard(label: 'Booking.com Flights', icon: Icons.flight),
-                                const _ExternalServiceCard(label: 'HRVI Booking', icon: Icons.directions_car),
-                              ],
-                            ),
-                          ),
-                          _SectionHeader(title: 'Partner shops'),
-                          SizedBox(
-                            height: 84,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              children: _shops
-                                  .map((s) => _ShopCard(shop: s))
-                                  .toList(),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        right: 10,
+                        top: 10,
+                        child: Material(
+                          color: Colors.white,
+                          elevation: 3,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => showMapLayerSheet(
+                              context,
+                              baseId: _baseId,
+                              overlayIds: _overlayIds,
+                              onChanged: (b, o) => setState(() {
+                                _baseId = _savedBase = b;
+                                _overlayIds = {...o};
+                                _savedOverlays = {...o};
+                              }),
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: Icon(Icons.layers, color: AppColors.navy),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 6,
+                        bottom: 4,
+                        right: 70,
+                        child: Text(
+                          mapCredit(baseById(_baseId), _overlayIds),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: baseById(_baseId).dark
+                                ? Colors.white
+                                : Colors.black54,
+                            shadows: const [
+                              Shadow(blurRadius: 3, color: Colors.black26),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                Expanded(
+                  flex: 2,
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    children: [
+                      _SectionHeader(
+                        title: 'สถานที่ทั้งหมด (${_locations.length})',
+                      ),
+                      SizedBox(
+                        height: 44,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: _locations
+                              .map(
+                                (l) => Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ActionChip(
+                                    avatar: Icon(
+                                      iconFor(l.icon),
+                                      size: 16,
+                                      color: AppColors.navy,
+                                    ),
+                                    label: Text(l.name),
+                                    onPressed: () => _goTo(l),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                      _SectionHeader(title: 'Booking services'),
+                      SizedBox(
+                        height: 76,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: [
+                            _ExternalServiceCard(
+                              label: 'Booking.com',
+                              icon: Icons.hotel,
+                              onTap: _pickLocationForBooking,
+                            ),
+                            const _ExternalServiceCard(
+                              label: 'Booking.com Flights',
+                              icon: Icons.flight,
+                            ),
+                            const _ExternalServiceCard(
+                              label: 'HRVI Booking',
+                              icon: Icons.directions_car,
+                            ),
+                          ],
+                        ),
+                      ),
+                      _SectionHeader(title: 'Partner shops'),
+                      SizedBox(
+                        height: 84,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: _shops
+                              .map((s) => _ShopCard(shop: s))
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -326,35 +506,51 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-        child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+    child: Text(
+      title,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+    ),
+  );
 }
 
 class _ExternalServiceCard extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
-  const _ExternalServiceCard({required this.label, required this.icon, this.onTap});
+  const _ExternalServiceCard({
+    required this.label,
+    required this.icon,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap ??
+      onTap:
+          onTap ??
           () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('เปิดลิงก์จองภายนอก (mock): $label')),
-              ),
+            SnackBar(content: Text('เปิดลิงก์จองภายนอก (mock): $label')),
+          ),
       child: Container(
         width: 120,
         margin: const EdgeInsets.only(right: 10),
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE3E7EF))),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE3E7EF)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, color: AppColors.navy),
             const Spacer(),
-            Text(label, maxLines: 2, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              maxLines: 2,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),
@@ -372,18 +568,37 @@ class _ShopCard extends StatelessWidget {
       width: 150,
       margin: const EdgeInsets.only(right: 10),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE3E7EF))),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3E7EF)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            CircleAvatar(radius: 14, backgroundColor: AppColors.gold.withValues(alpha: 0.2), child: Icon(iconFor(shop.icon), size: 14, color: AppColors.navy)),
-            const SizedBox(width: 6),
-            const Icon(Icons.star, size: 14, color: Colors.amber),
-            Text(' ${shop.rating}', style: const TextStyle(fontSize: 11)),
-          ]),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: AppColors.gold.withValues(alpha: 0.2),
+                child: Icon(
+                  iconFor(shop.icon),
+                  size: 14,
+                  color: AppColors.navy,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.star, size: 14, color: Colors.amber),
+              Text(' ${shop.rating}', style: const TextStyle(fontSize: 11)),
+            ],
+          ),
           const Spacer(),
-          Text(shop.shopName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+          Text(
+            shop.shopName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
