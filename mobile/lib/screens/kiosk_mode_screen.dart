@@ -29,6 +29,9 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   bool _loadingKiosks = true;
   CheckinKiosk? _selected;
   final _keyController = TextEditingController();
+  final _codeController = TextEditingController();
+  String? _kioskListError;
+  Timer? _retryList;
   bool _separateQrCamera = false;
   bool _starting = false;
   String? _setupError;
@@ -80,18 +83,30 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _faceCamera?.dispose();
     _qrCamera?.dispose();
     _keyController.dispose();
+    _codeController.dispose();
+    _retryList?.cancel();
     super.dispose();
   }
 
   Future<void> _loadKiosks() async {
     try {
       final data = await apiClient.get('/catalog/kiosks');
+      _retryList?.cancel();
+      if (!mounted) return;
       setState(() {
         _kiosks = (data['kiosks'] as List).map((e) => CheckinKiosk.fromJson(e)).toList();
         _loadingKiosks = false;
+        _kioskListError = null;
       });
     } catch (e) {
-      setState(() => _loadingKiosks = false);
+      if (!mounted) return;
+      setState(() {
+        _loadingKiosks = false;
+        _kioskListError = 'โหลดรายการตู้ไม่สำเร็จ (เซิร์ฟเวอร์อาจกำลังตื่น) กำลังลองใหม่...';
+      });
+      // the server may still be waking up: keep retrying until the list arrives
+      _retryList?.cancel();
+      _retryList = Timer(const Duration(seconds: 4), _loadKiosks);
     }
   }
 
@@ -105,17 +120,18 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 
   Future<void> _start() async {
     final kiosk = _selected;
-    if (kiosk == null || _keyController.text.trim().isEmpty) {
-      setState(() => _setupError = 'เลือกตู้และกรอกคีย์ตู้');
+    final typedCode = _codeController.text.trim().toUpperCase();
+    if ((kiosk == null && typedCode.isEmpty) || _keyController.text.trim().isEmpty) {
+      setState(() => _setupError = 'เลือกตู้ (หรือพิมพ์รหัสตู้) และกรอกคีย์ตู้');
       return;
     }
     setState(() {
       _starting = true;
       _setupError = null;
     });
-    _code = kiosk.kioskCode;
+    _code = kiosk?.kioskCode ?? typedCode;
     _key = _keyController.text.trim();
-    _locationName = '${kiosk.locationName} (${kiosk.province})';
+    _locationName = kiosk != null ? '${kiosk.locationName} (${kiosk.province})' : _code;
     _geo = await currentPosition();
     _recentTokens.clear();
     _rotateToken();
@@ -153,6 +169,10 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       final session = data['session'] as Map<String, dynamic>?;
       if (session != null && session['session_id'] == _session?['session_id']) {
         _environmentOk = session['environment_ok'] as bool?;
+      }
+      final serverLocation = (data['kiosk']?['location']?['name']) as String?;
+      if (serverLocation != null && serverLocation != _locationName && _stage != _Stage.setup) {
+        _locationName = serverLocation;
       }
       if (!_online) setState(() => _online = true);
       if (session != null && _stage == _Stage.idle && !_busy && session['session_id'] != _handledSessionId) {
@@ -390,6 +410,22 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
                           onChanged: (v) => setState(() => _selected = v),
                         ),
                       ),
+                    ),
+                  ),
+                  if (_kioskListError != null) ...[
+                    const SizedBox(height: 8),
+                    _text(_kioskListError!, size: 12, color: Colors.orangeAccent),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _codeController,
+                    textCapitalization: TextCapitalization.characters,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'หรือพิมพ์รหัสตู้ เช่น KSK-001 (ใช้เมื่อเลือกจากรายการไม่ได้)',
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white38)),
+                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: AppColors.gold)),
                     ),
                   ),
                   const SizedBox(height: 12),
