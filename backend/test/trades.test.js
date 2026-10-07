@@ -176,3 +176,16 @@ test('a card that is not CLAIMED (unclaimed physical card) cannot be traded', as
   const r = await s.call('POST', '/trades', { mode: 'gift', to_username: bob.username, offered_card_id: card.card_instance_id }, alice.token);
   assert.equal(r.status, 404);
 });
+
+test("a traveler's tradable cards can be listed, without locked cards or private data", async () => {
+  const [card, locked] = await giveCards(carol, 2);
+  await s.call('POST', '/trades', { mode: 'gift', to_username: alice.username, offered_card_id: locked.card_instance_id }, carol.token);
+  const r = await s.call('GET', `/users/${carol.username}/cards`, undefined, alice.token);
+  assert.equal(r.status, 200);
+  const ids = r.body.cards.map((c) => c.card_instance_id);
+  assert.ok(ids.includes(card.card_instance_id));
+  assert.equal(ids.includes(locked.card_instance_id), false);
+  assert.equal(JSON.stringify(r.body).includes('base64'), false);
+  assert.equal((await s.call('GET', `/users/${carol.username}/cards`)).status, 401);
+  assert.equal((await s.call('GET', '/users/admin/cards', undefined, alice.token)).status, 404);
+});

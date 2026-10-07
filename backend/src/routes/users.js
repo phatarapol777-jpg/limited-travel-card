@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { authMiddleware } = require('../util');
+const { CARD_SELECT, cardView } = require('../services/cardService');
 
 const router = express.Router();
 
@@ -13,6 +14,14 @@ router.get('/search', authMiddleware, (req, res) => {
     WHERE user_id != ? AND is_admin = 0 AND (username LIKE ? ESCAPE '\\' OR user_id = ?) ORDER BY username LIMIT 10`)
     .all(req.user.user_id, like, q);
   res.json({ users: rows.map((u) => ({ user_id: u.user_id, username: u.username, name: `${u.first_name} ${u.last_name}`.trim() })) });
+});
+
+// The cards a traveler could trade right now (activated and not locked in another offer): used to pick a swap target.
+router.get('/:username/cards', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT user_id FROM users WHERE username = ? AND is_admin = 0').get(req.params.username);
+  if (!user) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  const cards = db.prepare(`${CARD_SELECT} WHERE c.owner_user_id = ? AND c.activation_status = 'CLAIMED' ORDER BY c.acquired_at DESC`).all(user.user_id).map(cardView);
+  res.json({ cards });
 });
 
 module.exports = router;
