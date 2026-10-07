@@ -230,6 +230,59 @@ router.post('/quests/:id/close', (req, res) => {
   res.json({ status: 'closed' });
 });
 
+// ---- physical blind-pack cards: a master card plus a batch of unclaimed cards, each with its own activation QR --------
+router.post('/blind-packs', (req, res) => {
+  const { mintCard } = require('../services/cardService');
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  const lore = String(b.lore || '').trim();
+  const count = Number(b.count);
+  if (!name || name.length > 60) return res.status(400).json({ error: 'ชื่อการ์ดต้องไม่ว่างและไม่เกิน 60 ตัวอักษร' });
+  if (lore.length > 500) return res.status(400).json({ error: 'เรื่องราวการ์ดยาวเกิน 500 ตัวอักษร' });
+  if (!['normal', 'rare', 'special'].includes(String(b.rarity || '').toLowerCase())) return res.status(400).json({ error: 'เลือกระดับความหายาก' });
+  if (!Number.isInteger(count) || count < 1 || count > 5000) return res.status(400).json({ error: 'จำนวนการ์ดต้องเป็นจำนวนเต็ม 1 ถึง 5,000' });
+  const { imageError, MAX_CARD_IMAGE_CHARS } = require('../services/questService');
+  const imgErr = b.card_image ? imageError(b.card_image, MAX_CARD_IMAGE_CHARS, 'ภาพการ์ด') : null;
+  if (imgErr) return res.status(400).json({ error: imgErr });
+
+  const templateId = newId('tpl');
+  const created = db.transaction(() => {
+    db.prepare(`INSERT INTO card_templates (template_id, location_id, mission_id, name, icon, color_hex, type, rarity, card_type, image, lore, mint_limit, minted_count, quest_id)
+      VALUES (?, NULL, NULL, ?, 'style', ?, 'random', ?, 'PHYSICAL_BLIND_PACK', ?, ?, ?, 0, NULL)`)
+      .run(templateId, name, /^#[0-9A-Fa-f]{6}$/.test(b.color_hex || '') ? b.color_hex : '#4C6B8A', normalizeRarity(b.rarity), b.card_image || null, lore || null, count);
+    for (let i = 0; i < count; i++) mintCard({ templateId, userId: null, withActivationCode: true });
+  })();
+  void created;
+  res.status(201).json({ template_id: templateId, count });
+});
+
+router.get('/blind-packs', (req, res) => {
+  const rows = db.prepare(`SELECT t.template_id, t.name, t.rarity, t.mint_limit, t.minted_count,
+      (SELECT COUNT(*) FROM all_cards c WHERE c.template_id = t.template_id AND c.activation_status != 'UNCLAIMED') AS claimed
+    FROM card_templates t WHERE t.card_type = 'PHYSICAL_BLIND_PACK' AND EXISTS (SELECT 1 FROM all_cards c WHERE c.template_id = t.template_id AND c.activation_code IS NOT NULL)
+    ORDER BY t.name`).all();
+  res.json({ packs: rows });
+});
+
+// The activation codes to print as QR codes on the physical cards (admin only: each code is a bearer credential).
+router.get('/blind-packs/:id/codes', (req, res) => {
+  const { serialLabel } = require('../services/cardService');
+  const t = db.prepare("SELECT * FROM card_templates WHERE template_id = ? AND card_type = 'PHYSICAL_BLIND_PACK'").get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'ไม่พบการ์ด' });
+  const cards = db.prepare("SELECT serial_number, activation_code, activation_status FROM all_cards WHERE template_id = ? AND activation_code IS NOT NULL ORDER BY serial_number").all(t.template_id);
+  res.json({
+    name: t.name,
+    codes: cards.map((c) => ({ serial: serialLabel(c.serial_number, t.mint_limit), payload: `TRVCARD|${c.activation_code}`, status: c.activation_status })),
+  });
+});
+
+// How many people tapped "order physical card" for each design.
+router.get('/order-intents', (req, res) => {
+  const rows = db.prepare(`SELECT t.template_id, t.name, t.rarity, COUNT(i.intent_id) AS interested, MAX(i.created_at) AS last_at
+    FROM physical_order_intents i JOIN card_templates t ON t.template_id = i.template_id GROUP BY t.template_id ORDER BY interested DESC, last_at DESC`).all();
+  res.json({ intents: rows });
+});
+
 router.get('/kiosk-sessions/:id/photo', (req, res) => {
   const row = db.prepare('SELECT face_photo FROM checkin_sessions WHERE session_id = ?').get(req.params.id);
   if (!row || !row.face_photo) return res.status(404).json({ error: 'ไม่พบภาพ' });

@@ -322,6 +322,18 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
 `);
 
+db.exec(`
+-- "Order physical card" taps: measures demand before any card is printed. One row per user per card design.
+CREATE TABLE IF NOT EXISTS physical_order_intents (
+  intent_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(user_id),
+  template_id TEXT NOT NULL REFERENCES card_templates(template_id),
+  card_instance_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (user_id, template_id)
+);
+`);
+
 // Registration photos are no longer stored; wipe any saved by earlier versions.
 db.exec('UPDATE users SET face_photo = NULL WHERE face_photo IS NOT NULL');
 
