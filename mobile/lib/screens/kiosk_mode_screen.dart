@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/models.dart';
@@ -9,6 +8,7 @@ import '../services/api_client.dart';
 import '../services/edge_decision.dart';
 import '../services/face_service.dart';
 import '../services/geo_service.dart';
+import '../services/live_camera.dart';
 import '../services/liveness.dart';
 import '../theme.dart';
 
@@ -55,8 +55,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 
   // current session (the stored face vector lives only here, in memory, until the decision is made)
   Map<String, dynamic>? _session;
-  CameraController? _faceCamera;
-  CameraController? _qrCamera;
+  LiveCamera? _faceCamera;
+  LiveCamera? _qrCamera;
   String? _qrLabel;
   String? _latestQr;
   String _prompt = '';
@@ -80,8 +80,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _heartbeat?.cancel();
     _rotate?.cancel();
     _backToIdle?.cancel();
-    _faceCamera?.dispose();
-    _qrCamera?.dispose();
+    _faceCamera?.close();
+    _qrCamera?.close();
     _keyController.dispose();
     _codeController.dispose();
     _retryList?.cancel();
@@ -228,7 +228,6 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
       await _openCameras();
       live = await runLivenessCheck(
         _faceCamera!,
-        cameraLabel: _faceCamera!.description.name,
         onPrompt: (m) {
           if (mounted) setState(() => _prompt = m);
         },
@@ -328,23 +327,16 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
   }
 
   Future<void> _openCameras() async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) throw 'ไม่พบกล้องบนอุปกรณ์นี้';
-    final preset = ResolutionPreset.high;
-    final faceDesc = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
-    final face = CameraController(faceDesc, preset, enableAudio: false);
-    await face.initialize();
+    // One getUserMedia per camera, so the browser asks for permission only once.
+    final face = await openLiveCamera(front: true);
     _faceCamera = face;
-    CameraController? qr;
+    LiveCamera? qr;
     if (_separateQrCamera) {
-      final others = cameras.where((c) => c.name != faceDesc.name).toList();
-      if (others.isNotEmpty) {
-        qr = CameraController(others.first, preset, enableAudio: false);
-        await qr.initialize();
-      }
+      final others = (await listCameras()).where((c) => c.deviceId != face.deviceId).toList();
+      if (others.isNotEmpty) qr = await openLiveCamera(deviceId: others.first.deviceId);
     }
     _qrCamera = qr;
-    _qrLabel = (qr ?? face).description.name;
+    _qrLabel = (qr ?? face).label;
     if (mounted) setState(() {});
   }
 
@@ -354,8 +346,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
     _faceCamera = null;
     _qrCamera = null;
     _qrLabel = null;
-    await face?.dispose();
-    await qr?.dispose();
+    await face?.close();
+    await qr?.close();
   }
 
   // ---- UI ---------------------------------------------------------------------
@@ -499,8 +491,8 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
           children: [
             _text('สวัสดีคุณ $_userName', size: 16, bold: true),
             const SizedBox(height: 12),
-            _CameraBox(controller: face, caption: qr == null ? 'กล้องตู้ (ใบหน้า + QR)' : 'กล้องบน (ใบหน้า)'),
-            if (qr != null) ...[const SizedBox(height: 8), _CameraBox(controller: qr, caption: 'กล้องล่าง (QR)', height: 130)],
+            _CameraBox(camera: face, caption: qr == null ? 'กล้องตู้ (ใบหน้า + QR)' : 'กล้องบน (ใบหน้า)'),
+            if (qr != null) ...[const SizedBox(height: 8), _CameraBox(camera: qr, caption: 'กล้องล่าง (QR)', height: 130)],
             const SizedBox(height: 12),
             _text(_prompt, size: 16, bold: true, color: AppColors.gold),
             const SizedBox(height: 10),
@@ -565,14 +557,14 @@ class _KioskModeScreenState extends State<KioskModeScreen> {
 }
 
 class _CameraBox extends StatelessWidget {
-  final CameraController? controller;
+  final LiveCamera? camera;
   final String caption;
   final double height;
-  const _CameraBox({required this.controller, required this.caption, this.height = 240});
+  const _CameraBox({required this.camera, required this.caption, this.height = 240});
 
   @override
   Widget build(BuildContext context) {
-    final c = controller;
+    final c = camera;
     return Column(
       children: [
         ClipRRect(
@@ -580,16 +572,8 @@ class _CameraBox extends StatelessWidget {
           child: SizedBox(
             width: double.infinity,
             height: height,
-            child: c != null && c.value.isInitialized
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    clipBehavior: Clip.hardEdge,
-                    child: SizedBox(
-                      width: c.value.previewSize?.height ?? 480,
-                      height: c.value.previewSize?.width ?? 640,
-                      child: CameraPreview(c),
-                    ),
-                  )
+            child: c != null
+                ? liveCameraView(c)
                 : const ColoredBox(color: Colors.black26, child: Center(child: CircularProgressIndicator(color: Colors.white))),
           ),
         ),

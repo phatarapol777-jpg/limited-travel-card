@@ -1,7 +1,7 @@
 import 'dart:typed_data';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import '../services/face_service.dart';
+import '../services/live_camera.dart';
 import '../services/liveness.dart';
 import '../theme.dart';
 
@@ -12,7 +12,7 @@ class FaceCapture {
   FaceCapture(this.bytes, this.descriptor);
 }
 
-/// Live camera preview with a capture button. Reports the captured face (or null after "retake").
+/// Live camera preview with a scan button. Reports the captured face (or null after "retake").
 class FaceCaptureWidget extends StatefulWidget {
   final ValueChanged<FaceCapture?> onChanged;
   const FaceCaptureWidget({super.key, required this.onChanged});
@@ -23,9 +23,10 @@ class FaceCaptureWidget extends StatefulWidget {
 
 class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
   static const double _size = 240;
-  CameraController? _controller;
+  LiveCamera? _camera;
   FaceCapture? _capture;
   bool _busy = false;
+  bool _disposed = false;
   String? _message;
 
   @override
@@ -37,43 +38,37 @@ class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _disposed = true;
+    _camera?.close();
     super.dispose();
   }
 
   Future<void> _openCamera() async {
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        if (mounted) setState(() => _message = 'ไม่พบกล้องบนอุปกรณ์นี้');
-        return;
-      }
-      final camera = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
-      final controller = CameraController(camera, ResolutionPreset.medium, enableAudio: false);
-      await controller.initialize();
-      if (!mounted) {
-        controller.dispose();
+      final camera = await openLiveCamera(front: true);
+      if (_disposed) {
+        camera.close();
         return;
       }
       setState(() {
-        _controller = controller;
+        _camera = camera;
         _message = null;
       });
     } catch (e) {
-      if (mounted) setState(() => _message = 'เปิดกล้องไม่สำเร็จ กรุณาอนุญาตการใช้กล้องแล้วลองใหม่');
+      if (!_disposed) setState(() => _message = 'เปิดกล้องไม่สำเร็จ กรุณาอนุญาตการใช้กล้องแล้วกด "เปิดกล้องอีกครั้ง"');
     }
   }
 
   Future<void> _capturePhoto() async {
-    final controller = _controller;
-    if (controller == null || _busy) return;
+    final camera = _camera;
+    if (camera == null || _busy) return;
     setState(() {
       _busy = true;
       _message = 'มองตรงที่กล้อง';
     });
     try {
       final result = await runLivenessCheck(
-        controller,
+        camera,
         onPrompt: (m) {
           if (mounted) setState(() => _message = m);
         },
@@ -105,7 +100,7 @@ class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
+    final camera = _camera;
     final captured = _capture;
     return Column(
       children: [
@@ -116,15 +111,8 @@ class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
             height: _size,
             child: captured != null
                 ? Image.memory(captured.bytes, fit: BoxFit.cover)
-                : (controller != null && controller.value.isInitialized
-                    ? FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: controller.value.previewSize?.height ?? _size,
-                          height: controller.value.previewSize?.width ?? _size,
-                          child: CameraPreview(controller),
-                        ),
-                      )
+                : (camera != null
+                    ? liveCameraView(camera)
                     : const ColoredBox(color: Colors.black12, child: Center(child: Icon(Icons.face, size: 64, color: Colors.grey)))),
           ),
         ),
@@ -136,15 +124,20 @@ class _FaceCaptureWidgetState extends State<FaceCaptureWidget> {
           if (_message != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Text(_message!, textAlign: TextAlign.center, style: TextStyle(color: _busy ? AppColors.navy : Colors.red, fontSize: 14, fontWeight: _busy ? FontWeight.w600 : FontWeight.normal)),
+              child: Text(_message!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _busy ? AppColors.navy : Colors.red, fontSize: 14, fontWeight: _busy ? FontWeight.w600 : FontWeight.normal)),
             ),
-          ElevatedButton.icon(
-            onPressed: (controller == null || _busy) ? null : _capturePhoto,
-            icon: _busy
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.camera_alt),
-            label: const Text('สแกนใบหน้า'),
-          ),
+          if (camera == null && _message != null && _message!.contains('เปิดกล้องอีกครั้ง'))
+            ElevatedButton.icon(onPressed: _openCamera, icon: const Icon(Icons.videocam), label: const Text('เปิดกล้องอีกครั้ง'))
+          else
+            ElevatedButton.icon(
+              onPressed: (camera == null || _busy) ? null : _capturePhoto,
+              icon: _busy
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.camera_alt),
+              label: const Text('สแกนใบหน้า'),
+            ),
         ],
       ],
     );

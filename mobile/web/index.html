@@ -47,6 +47,76 @@
     }
   </script>
   <script>
+    // Camera access for the check-in screens. One getUserMedia call per camera: the Flutter camera plugin asks once to
+    // probe permission and again for every lens, and iOS Safari shows the permission prompt each time.
+    window.travelCam = (function () {
+      const cams = new Map();
+      let nextId = 1;
+      return {
+        // opts: JSON {facing: 'user' | 'environment', deviceId?}. Resolves to JSON {id, label, deviceId}.
+        open: async function (opts) {
+          const o = opts ? JSON.parse(opts) : {};
+          const facing = o.facing || 'user';
+          const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
+          const video = document.createElement('video');
+          video.muted = true;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.setAttribute('playsinline', '');
+          video.style.cssText = 'width:100%;height:100%;object-fit:cover;' + (facing === 'user' && !o.deviceId ? 'transform:scaleX(-1);' : '');
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: o.deviceId ? { deviceId: { exact: o.deviceId }, ...size } : { facingMode: { ideal: facing }, ...size },
+          });
+          video.srcObject = stream;
+          await video.play();
+          const track = stream.getVideoTracks()[0];
+          const id = String(nextId++);
+          cams.set(id, { video, stream, label: track.label });
+          return JSON.stringify({ id, label: track.label, deviceId: (track.getSettings().deviceId) || '' });
+        },
+        // Shows the camera's <video> inside a platform-view container created by Flutter.
+        mount: function (id, container) {
+          const c = cams.get(id);
+          if (!c) return;
+          container.style.cssText = 'width:100%;height:100%;overflow:hidden;';
+          container.appendChild(c.video);
+        },
+        close: function (id) {
+          const c = cams.get(id);
+          if (!c) return;
+          c.stream.getTracks().forEach((t) => t.stop());
+          c.video.remove();
+          cams.delete(id);
+        },
+        // The current frame as a JPEG data URL ('' when the camera is gone).
+        snapshot: function (id) {
+          const c = cams.get(id);
+          if (!c || !c.video.videoWidth) return '';
+          const canvas = document.createElement('canvas');
+          canvas.width = c.video.videoWidth;
+          canvas.height = c.video.videoHeight;
+          canvas.getContext('2d').drawImage(c.video, 0, 0);
+          return canvas.toDataURL('image/jpeg', 0.85);
+        },
+        // Video inputs as JSON [{deviceId, label}] (labels are filled in once camera permission is granted).
+        devices: async function () {
+          const list = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput' && d.deviceId);
+          return JSON.stringify(list.map((d) => ({ deviceId: d.deviceId, label: d.label })));
+        },
+        // Used by the face / QR readers below: the open camera with this track label (or the most recent one).
+        video: function (label) {
+          const list = [...cams.values()].filter((c) => c.stream.getVideoTracks()[0] && c.stream.getVideoTracks()[0].readyState === 'live' && c.video.videoWidth >= 64);
+          if (label) {
+            const match = list.find((c) => c.label === label);
+            if (match) return match.video;
+          }
+          return list.length ? list[list.length - 1].video : null;
+        },
+      };
+    })();
+  </script>
+  <script>
     // Browser-side face descriptor helper used by registration and the check-in kiosk.
     // Returns a JSON string of 128 numbers, or null when no face is found.
     window.travelFace = (function () {
@@ -77,26 +147,9 @@
         }
         return ready;
       }
-      // The camera plugin's <video> elements may sit inside shadow roots. Only videos with a live camera track count
-      // (a closed camera leaves a dead 2x2 video behind); `label` picks one camera when several are open.
+      // The open camera's <video>; `label` picks one camera when several are open.
       function findVideo(label) {
-        const roots = [document];
-        const live = [];
-        while (roots.length) {
-          const root = roots.pop();
-          root.querySelectorAll('*').forEach((el) => {
-            if (el.tagName === 'VIDEO' && el.srcObject && el.srcObject.getVideoTracks && el.readyState >= 2 && el.videoWidth >= 64) {
-              const track = el.srcObject.getVideoTracks()[0];
-              if (track && track.readyState === 'live') live.push({ el, label: track.label });
-            }
-            if (el.shadowRoot) roots.push(el.shadowRoot);
-          });
-        }
-        if (label) {
-          const match = live.find((v) => v.label === label);
-          if (match) return match.el;
-        }
-        return live.length ? live[live.length - 1].el : null;
+        return window.travelCam.video(label);
       }
       function loadImage(dataUrl) {
         return new Promise((resolve, reject) => {
@@ -139,7 +192,7 @@
           const pts = faces[0].landmarks.positions;
           const yaw = (pts[30].x - pts[0].x) / (pts[16].x - pts[0].x);
           const off = Math.abs(yaw - 0.5);
-          const wanted = (mode === 'frontal' && off <= 0.09) || (mode === 'turned' && off >= 0.12);
+          const wanted = (mode === 'frontal' && off <= 0.11) || (mode === 'turned' && off >= 0.16);
           if (!wanted) return JSON.stringify({ yaw });
           const full = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.6 });
           const withId = await faceapi.detectAllFaces(video, full).withFaceLandmarks().withFaceDescriptors();
