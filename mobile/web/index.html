@@ -35,6 +35,18 @@
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" defer></script>
   <script>
+    // This app no longer uses a service worker. Remove any registered by earlier builds (they can serve a stale,
+    // half-updated copy of the app and leave a white screen), then reload once.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        if (!regs.length) return;
+        Promise.all(regs.map((r) => r.unregister()))
+          .then(() => (window.caches ? caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))) : null))
+          .then(() => location.reload());
+      }).catch(() => {});
+    }
+  </script>
+  <script>
     // Browser-side face descriptor helper used by registration and the check-in kiosk.
     // Returns a JSON string of 128 numbers, or null when no face is found.
     window.travelFace = (function () {
