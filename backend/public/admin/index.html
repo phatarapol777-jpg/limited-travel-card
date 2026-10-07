@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Limited Travel Card - Admin</title>
+<style>
+  :root { --navy:#14284b; --gold:#d4af37; --bg:#f4f6fa; --line:#e3e7ef; --red:#c0392b; --green:#1e8e5a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Noto Sans Thai", sans-serif; background:var(--bg); color:#1b2433; }
+  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+  header h1 { font-size:18px; margin:0; flex:1; }
+  header button { background:transparent; color:#fff; border:1px solid #ffffff55; padding:6px 12px; border-radius:6px; cursor:pointer; }
+  main { max-width:1100px; margin:0 auto; padding:20px; }
+  .login { max-width:340px; margin:80px auto; background:#fff; padding:28px; border-radius:12px; border:1px solid var(--line); }
+  .login h2 { margin-top:0; color:var(--navy); }
+  label { display:block; font-size:13px; color:#55607a; margin:10px 0 4px; }
+  input, select, textarea { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+  button.primary { background:var(--navy); color:#fff; border:0; padding:10px 16px; border-radius:6px; cursor:pointer; font:inherit; }
+  button.small { padding:5px 10px; border-radius:5px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.danger { color:var(--red); }
+  .err { color:var(--red); font-size:13px; margin-top:10px; min-height:18px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .stat { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .stat b { display:block; font-size:28px; color:var(--navy); }
+  .stat span { font-size:12px; color:#6b7690; }
+  nav.tabs { display:flex; gap:6px; margin:22px 0 12px; flex-wrap:wrap; }
+  nav.tabs button { background:#fff; border:1px solid var(--line); padding:8px 14px; border-radius:20px; cursor:pointer; font:inherit; }
+  nav.tabs button.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:#6b7690; font-weight:600; font-size:12px; }
+  .row-actions { display:flex; gap:6px; }
+  .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0 14px; }
+  .form-actions { margin-top:16px; display:flex; gap:8px; }
+  .muted { color:#6b7690; font-size:13px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Limited Travel Card · Admin Dashboard</h1>
+  <button id="logoutBtn" hidden>ออกจากระบบ</button>
+</header>
+
+<section id="loginView" class="login">
+  <h2>เข้าสู่ระบบแอดมิน</h2>
+  <label for="username">Username</label>
+  <input id="username" autocomplete="username">
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="current-password">
+  <div class="err" id="loginErr"></div>
+  <button class="primary" id="loginBtn" style="width:100%;margin-top:6px">เข้าสู่ระบบ</button>
+</section>
+
+<main id="appView" hidden>
+  <div class="stats" id="stats"></div>
+  <nav class="tabs" id="tabs"></nav>
+  <div class="panel" id="panel"></div>
+</main>
+
+<script>
+const API = '/api';
+const state = { token: sessionStorage.getItem('adminToken'), tab: 'overview' };
+
+// All dynamic content is inserted via textContent / DOM nodes, never innerHTML.
+function el(tag, props, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === 'class') node.className = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) node.append(c instanceof Node ? c : document.createTextNode(c ?? ''));
+  return node;
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(API + path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token, ...(options.headers || {}) },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401 || res.status === 403) { logout(); throw new Error(body.error || 'ไม่มีสิทธิ์'); }
+  if (!res.ok) throw new Error(body.error || 'Request failed');
+  return body;
+}
+
+function logout() {
+  sessionStorage.removeItem('adminToken');
+  state.token = null;
+  showView();
+}
+
+function showView() {
+  const loggedIn = !!state.token;
+  document.getElementById('loginView').hidden = loggedIn;
+  document.getElementById('appView').hidden = !loggedIn;
+  document.getElementById('logoutBtn').hidden = !loggedIn;
+  if (loggedIn) loadAll();
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const errBox = document.getElementById('loginErr');
+  errBox.textContent = '';
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: document.getElementById('username').value, password: document.getElementById('password').value }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'เข้าสู่ระบบไม่สำเร็จ');
+    if (body.user.is_admin !== 1) throw new Error('บัญชีนี้ไม่ใช่แอดมิน');
+    state.token = body.token;
+    sessionStorage.setItem('adminToken', body.token);
+    showView();
+  } catch (e) { errBox.textContent = e.message; }
+});
+document.getElementById('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+const TABS = [
+  ['overview', 'ภาพรวม'], ['locations', 'สถานที่'], ['users', 'ผู้ใช้'], ['bookings', 'คำขอจอง'], ['checkins', 'การเช็คอิน'],
+];
+
+function renderTabs() {
+  const nav = document.getElementById('tabs');
+  nav.replaceChildren(...TABS.map(([id, label]) =>
+    el('button', { class: state.tab === id ? 'active' : '', onclick: () => { state.tab = id; renderTabs(); renderPanel(); } }, label)));
+}
+
+async function loadAll() {
+  renderTabs();
+  try {
+    const s = await api('/admin/stats');
+    state.stats = s;
+    const items = [['ผู้ใช้', s.users], ['สถานที่', s.locations], ['เช็คอินสำเร็จ', s.checkins], ['การ์ดที่แจก', s.cards_awarded], ['คำขอจอง', s.booking_requests], ['Kiosk สำเร็จ', s.kiosk_sessions_completed]];
+    document.getElementById('stats').replaceChildren(...items.map(([label, n]) => el('div', { class: 'stat' }, el('b', {}, String(n)), el('span', {}, label))));
+  } catch (e) { /* logout handled in api() */ }
+  renderPanel();
+}
+
+function table(headers, rows) {
+  if (!rows.length) return el('p', { class: 'muted' }, 'ยังไม่มีข้อมูล');
+  return el('table', {}, el('thead', {}, el('tr', {}, headers.map((h) => el('th', {}, h)))), el('tbody', {}, rows.map((r) => el('tr', {}, r.map((c) => el('td', {}, c))))));
+}
+const fmtDate = (s) => (s ? String(s).replace('T', ' ').slice(0, 16) : '-');
+
+async function renderPanel() {
+  const panel = document.getElementById('panel');
+  panel.replaceChildren(el('p', { class: 'muted' }, 'กำลังโหลด...'));
+  try {
+    if (state.tab === 'overview') {
+      const s = state.stats || (await api('/admin/stats'));
+      panel.replaceChildren(el('h3', {}, 'สถานที่ที่มีคนเช็คอินมากที่สุด'),
+        table(['สถานที่', 'จังหวัด', 'เช็คอิน'], s.top_locations.map((l) => [l.name, l.province, String(l.checkins)])));
+    } else if (state.tab === 'users') {
+      const { users } = await api('/admin/users');
+      panel.replaceChildren(table(['Username', 'ชื่อ', 'อีเมล', 'การ์ด', 'เช็คอิน', 'สมัครเมื่อ'],
+        users.map((u) => [u.username, `${u.first_name} ${u.last_name}`, u.email, String(u.cards), String(u.checkins), fmtDate(u.created_at)])));
+    } else if (state.tab === 'bookings') {
+      const { requests } = await api('/admin/booking-requests');
+      panel.replaceChildren(table(['โรงแรม', 'ผู้เข้าพัก', 'ผู้ขอ', 'เข้าพัก', 'ราคา', 'สถานะ', 'เวลาขอ'],
+        requests.map((r) => [r.hotel_name, r.guest_name, r.username, `${r.check_in_date} → ${r.check_out_date}`, `${Math.round(r.price_amount || 0)} ${r.price_currency || ''}`, r.status, fmtDate(r.requested_at)])));
+    } else if (state.tab === 'checkins') {
+      const { checkins } = await api('/admin/checkins');
+      panel.replaceChildren(table(['เวลา', 'ผู้ใช้', 'สถานที่', 'จังหวัด', 'ยืนยันใบหน้า'],
+        checkins.map((c) => [fmtDate(c.timestamp), c.username, c.location_name, c.province, c.has_face_photo ? 'มีภาพ' : '-'])));
+    } else if (state.tab === 'locations') {
+      await renderLocations(panel);
+    }
+  } catch (e) { panel.replaceChildren(el('p', { class: 'err' }, e.message)); }
+}
+
+async function renderLocations(panel) {
+  const { locations } = await api('/admin/locations');
+  const rows = locations.map((l) => [
+    l.name, l.province, l.mission ? l.mission.title : '-', l.card ? `${l.card.name} (${l.card.rarity})` : '-',
+    el('div', { class: 'row-actions' },
+      el('button', { class: 'small', onclick: () => showForm(panel, l) }, 'แก้ไข'),
+      el('button', { class: 'small danger', onclick: () => removeLocation(l) }, 'ลบ')),
+  ]);
+  panel.replaceChildren(
+    el('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px' },
+      el('h3', { style: 'margin:0' }, 'จัดการสถานที่'),
+      el('button', { class: 'primary', onclick: () => showForm(panel, null) }, '+ เพิ่มสถานที่')),
+    table(['สถานที่', 'จังหวัด', 'ภารกิจ', 'การ์ด', ''], rows));
+}
+
+async function removeLocation(l) {
+  if (!confirm(`ลบ "${l.name}" ใช่หรือไม่?`)) return;
+  try { await api('/admin/locations/' + l.location_id, { method: 'DELETE' }); loadAll(); }
+  catch (e) { alert(e.message); }
+}
+
+function showForm(panel, existing) {
+  const f = (id, label, value, type = 'text') => el('div', {}, el('label', { for: id }, label), el('input', { id, type, value: value ?? '' }));
+  const e = existing || {};
+  const errBox = el('div', { class: 'err' });
+  const rarity = el('select', { id: 'f_rarity' }, ['common', 'rare', 'epic'].map((r) => { const o = el('option', { value: r }, r); if ((e.card && e.card.rarity) === r) o.selected = true; return o; }));
+  const val = (id) => document.getElementById(id).value.trim();
+  panel.replaceChildren(
+    el('h3', {}, existing ? 'แก้ไขสถานที่' : 'เพิ่มสถานที่ใหม่'),
+    el('div', { class: 'form-grid' },
+      f('f_name', 'ชื่อสถานที่', e.name), f('f_province', 'จังหวัด', e.province), f('f_desc', 'คำอธิบาย', e.description),
+      f('f_lat', 'ละติจูด', e.latitude, 'number'), f('f_lng', 'ลองจิจูด', e.longitude, 'number'), f('f_icon', 'ไอคอน (เช่น temple_buddhist)', e.icon || 'place'),
+      f('f_mtitle', 'ชื่อภารกิจ', e.mission && e.mission.title), f('f_mdesc', 'คำอธิบายภารกิจ', e.mission && e.mission.description),
+      f('f_cname', 'ชื่อการ์ด', e.card && e.card.name), f('f_ccolor', 'สีการ์ด (hex)', (e.card && e.card.color_hex) || '#4C6B8A'),
+      f('f_cicon', 'ไอคอนการ์ด', (e.card && e.card.icon) || 'style'),
+      el('div', {}, el('label', { for: 'f_rarity' }, 'ความหายาก'), rarity)),
+    errBox,
+    el('div', { class: 'form-actions' },
+      el('button', { class: 'primary', onclick: async () => {
+        errBox.textContent = '';
+        const payload = {
+          name: val('f_name'), province: val('f_province'), description: val('f_desc'),
+          latitude: parseFloat(val('f_lat')), longitude: parseFloat(val('f_lng')), icon: val('f_icon'),
+          mission_title: val('f_mtitle'), mission_description: val('f_mdesc'),
+          card_name: val('f_cname'), card_color_hex: val('f_ccolor'), card_icon: val('f_cicon'), card_rarity: rarity.value,
+        };
+        try {
+          await api(existing ? '/admin/locations/' + existing.location_id : '/admin/locations', { method: existing ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+          loadAll();
+        } catch (err) { errBox.textContent = err.message; }
+      } }, 'บันทึก'),
+      el('button', { class: 'small', onclick: () => renderPanel() }, 'ยกเลิก')));
+}
+
+showView();
+</script>
+</body>
+</html>

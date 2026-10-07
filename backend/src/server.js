@@ -22,6 +22,7 @@ app.use('/api/history', require('./routes/history'));
 app.use('/api/booking', require('./routes/booking'));
 app.use('/api/kiosk', require('./routes/kiosk'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')));
 
 app.use((err, req, res, next) => {
   console.error(err);

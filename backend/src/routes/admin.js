@@ -122,4 +122,47 @@ router.delete('/locations/:id', (req, res) => {
   res.json({ status: 'deleted' });
 });
 
+router.get('/stats', (req, res) => {
+  const count = (sql) => db.prepare(sql).get().c;
+  const topLocations = db.prepare(`SELECT l.name, l.province, COUNT(h.history_id) AS checkins
+    FROM locations l LEFT JOIN travel_history h ON h.location_id = l.location_id AND h.status = 'success'
+    GROUP BY l.location_id ORDER BY checkins DESC, l.name LIMIT 5`).all();
+  res.json({
+    users: count('SELECT COUNT(*) AS c FROM users WHERE is_admin = 0'),
+    locations: count('SELECT COUNT(*) AS c FROM locations'),
+    checkins: count("SELECT COUNT(*) AS c FROM travel_history WHERE status = 'success'"),
+    cards_awarded: count('SELECT COUNT(*) AS c FROM all_cards WHERE owner_user_id IS NOT NULL'),
+    booking_requests: count('SELECT COUNT(*) AS c FROM booking_requests'),
+    kiosk_sessions_completed: count("SELECT COUNT(*) AS c FROM checkin_sessions WHERE status = 'completed'"),
+    top_locations: topLocations,
+  });
+});
+
+router.get('/users', (req, res) => {
+  const users = db.prepare(`SELECT u.user_id, u.username, u.first_name, u.last_name, u.email, u.created_at,
+      (SELECT COUNT(*) FROM all_cards c WHERE c.owner_user_id = u.user_id) AS cards,
+      (SELECT COUNT(*) FROM travel_history t WHERE t.user_id = u.user_id AND t.status = 'success') AS checkins
+    FROM users u WHERE u.is_admin = 0 ORDER BY u.created_at DESC`).all();
+  res.json({ users });
+});
+
+router.get('/booking-requests', (req, res) => {
+  const requests = db.prepare(`SELECT br.booking_request_id, br.guest_name, br.status, br.requested_at,
+      u.username, ho.price_amount, ho.price_currency, ho.check_in_date, ho.check_out_date, h.name AS hotel_name
+    FROM booking_requests br
+    JOIN users u ON u.user_id = br.user_id
+    JOIN hotel_offers ho ON ho.offer_id = br.offer_id
+    JOIN hotels h ON h.hotel_id = ho.hotel_id
+    ORDER BY br.requested_at DESC LIMIT 100`).all();
+  res.json({ requests });
+});
+
+router.get('/checkins', (req, res) => {
+  const checkins = db.prepare(`SELECT t.history_id, t.timestamp, u.username, l.name AS location_name, l.province,
+      EXISTS(SELECT 1 FROM checkin_sessions s WHERE s.user_id = t.user_id AND s.location_id = t.location_id AND s.face_photo IS NOT NULL) AS has_face_photo
+    FROM travel_history t JOIN users u ON u.user_id = t.user_id JOIN locations l ON l.location_id = t.location_id
+    WHERE t.status = 'success' ORDER BY t.timestamp DESC LIMIT 100`).all();
+  res.json({ checkins });
+});
+
 module.exports = router;
