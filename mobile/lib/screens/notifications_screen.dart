@@ -4,6 +4,9 @@ import '../services/api_client.dart';
 import '../theme.dart';
 import 'my_quests_screen.dart';
 import 'my_shops_screen.dart';
+import 'community_profile_screen.dart';
+import 'leaderboard_screen.dart';
+import 'post_detail_screen.dart';
 import 'trades_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -44,6 +47,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (type == 'merchant_approved') return Icons.storefront;
     if (type == 'merchant_rejected') return Icons.edit_note;
     if (type == 'merchant_suspended') return Icons.pause_circle_outline;
+    if (type == 'community_comment') return Icons.mode_comment_outlined;
+    if (type == 'community_reaction') return Icons.add_reaction_outlined;
+    if (type == 'community_follow') return Icons.person_add_alt_1;
+    if (type == 'community_badge') return Icons.workspace_premium;
     if (type == 'order_ready') return Icons.local_shipping_outlined;
     if (type == 'card_voided') return Icons.block;
     return Icons.notifications;
@@ -54,6 +61,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TradesScreen()));
     } else if (n.type.startsWith('quest')) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyQuestsScreen()));
+    } else if (n.type == 'community_comment' || n.type == 'community_reaction') {
+      final id = n.data?['post_id'] as String?;
+      if (id != null) Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostDetailScreen(postId: id)));
+    } else if (n.type == 'community_follow') {
+      final u = n.data?['username'] as String?;
+      if (u != null) Navigator.of(context).push(MaterialPageRoute(builder: (_) => CommunityProfileScreen(username: u)));
+    } else if (n.type == 'community_badge') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
     } else if (n.type.startsWith('merchant')) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyShopsScreen()));
     }

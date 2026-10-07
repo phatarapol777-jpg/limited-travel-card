@@ -6,6 +6,7 @@ import 'card_inventory_screen.dart';
 import 'community_screen.dart';
 import 'main_scan_screen.dart';
 import 'map_missions_screen.dart';
+import 'post_detail_screen.dart';
 import 'profile_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -14,6 +15,9 @@ class HomeShell extends StatefulWidget {
   @override
   State<HomeShell> createState() => HomeShellState();
 }
+
+// A shared link looks like /?post=<id>; it is opened once, right after the first sign-in of this page load.
+bool _linkHandled = false;
 
 class HomeShellState extends State<HomeShell> {
   int _index = 0;
@@ -32,6 +36,15 @@ class HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _checkUnread();
+    if (!_linkHandled) {
+      _linkHandled = true;
+      final postId = Uri.base.queryParameters['post'];
+      if (postId != null && postId.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostDetailScreen(postId: postId)));
+        });
+      }
+    }
     _poll = Timer.periodic(const Duration(seconds: 30), (_) => _checkUnread());
   }
 

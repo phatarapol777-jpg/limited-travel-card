@@ -225,54 +225,6 @@ class TravelCard {
       );
 }
 
-class CommunityPost {
-  final String postId;
-  final String username;
-  final String content;
-  final String? imageEmoji;
-  final String timestamp;
-  final int likeCount;
-  final int commentCount;
-  final bool likedByMe;
-
-  CommunityPost({
-    required this.postId,
-    required this.username,
-    required this.content,
-    this.imageEmoji,
-    required this.timestamp,
-    required this.likeCount,
-    required this.commentCount,
-    required this.likedByMe,
-  });
-
-  factory CommunityPost.fromJson(Map<String, dynamic> j) => CommunityPost(
-        postId: j['post_id'],
-        username: j['username'],
-        content: j['content'] ?? '',
-        imageEmoji: j['image_emoji'],
-        timestamp: j['timestamp'],
-        likeCount: j['like_count'] ?? 0,
-        commentCount: j['comment_count'] ?? 0,
-        likedByMe: j['liked_by_me'] == true,
-      );
-}
-
-class Comment {
-  final String commentId;
-  final String username;
-  final String content;
-  final String timestamp;
-  Comment({required this.commentId, required this.username, required this.content, required this.timestamp});
-
-  factory Comment.fromJson(Map<String, dynamic> j) => Comment(
-        commentId: j['comment_id'],
-        username: j['username'],
-        content: j['content'],
-        timestamp: j['timestamp'],
-      );
-}
-
 class TravelHistoryEntry {
   final String locationName;
   final String province;

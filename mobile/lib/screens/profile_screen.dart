@@ -13,6 +13,9 @@ import 'face_enroll_screen.dart';
 import 'login_screen.dart';
 import 'my_quests_screen.dart';
 import 'my_shops_screen.dart';
+import 'community_profile_screen.dart';
+import 'edit_community_profile_screen.dart';
+import 'leaderboard_screen.dart';
 import 'notifications_screen.dart';
 import 'pin_picker_screen.dart';
 import 'trades_screen.dart';
@@ -277,6 +280,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () => _go(const NotificationsScreen()),
                   ),
                   _menu(Icons.flag_outlined, 'ภารกิจของฉัน', subtitle: 'สร้างภารกิจ ติดตามสถานะ และดาวน์โหลด QR', onTap: () => _go(const MyQuestsScreen())),
+                  _menu(Icons.public, 'โปรไฟล์ชุมชนของฉัน', subtitle: 'โพสต์ ผู้ติดตาม และตราสัญลักษณ์ ตามที่คนอื่นเห็น', onTap: () => _go(CommunityProfileScreen(username: user?.username ?? ''))),
+                  _menu(Icons.manage_accounts_outlined, 'แก้ไขโปรไฟล์ชุมชน', subtitle: 'ชื่อที่แสดง รูป ภาพปก Bio และสวิตช์ตราสัญลักษณ์', onTap: () => _go(const EditCommunityProfileScreen())),
+                  _menu(Icons.emoji_events_outlined, 'นักเที่ยวประจำเดือน', subtitle: 'อันดับผู้แท็กสถานที่ท่องเที่ยวมากที่สุดของเดือน', onTap: () => _go(const LeaderboardScreen())),
                   _menu(Icons.storefront_outlined, 'ร้านค้าของฉัน', subtitle: 'ลงทะเบียนร้านพันธมิตร สิทธิประโยชน์การ์ด และติดตามสถานะ', onTap: () => _go(const MyShopsScreen())),
                   Card(
                     margin: const EdgeInsets.only(bottom: 8),

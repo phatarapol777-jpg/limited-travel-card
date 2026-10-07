@@ -7,11 +7,10 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../theme.dart';
 import '../utils/icon_map.dart';
-import '../widgets/location_quests.dart';
+import '../widgets/place_detail.dart';
 import '../widgets/map_layers.dart';
 import '../widgets/shop_detail.dart';
 import 'booking_screen.dart';
-import 'scan_kiosk_screen.dart';
 
 class MapMissionsScreen extends StatefulWidget {
   const MapMissionsScreen({super.key});
@@ -95,16 +94,12 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
   }
 
   void _openLocationSheet(TravelLocation loc) {
-    final missionsHere = _missions
-        .where((m) => m.locationId == loc.locationId)
-        .toList();
+    final missionsHere = _missions.where((m) => m.locationId == loc.locationId).toList();
     final shopsHere = _shops.where((s) => s.nearbyLocationId == loc.locationId).toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.6,
         maxChildSize: 0.9,
@@ -112,124 +107,7 @@ class MapMissionsScreenState extends State<MapMissionsScreen> {
         builder: (ctx, scrollController) => SingleChildScrollView(
           controller: scrollController,
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: AppColors.navy,
-                    backgroundImage: loc.pinImageUrl != null
-                        ? NetworkImage(loc.pinImageUrl!)
-                        : null,
-                    child: loc.pinImageUrl != null
-                        ? null
-                        : Icon(iconFor(loc.icon), color: Colors.white),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          loc.name,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          loc.province,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                loc.description ?? '',
-                style: const TextStyle(color: Colors.black87),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Check-in ที่นี่'),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ScanKioskScreen(location: loc),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.hotel),
-                      label: const Text('ค้นหาที่พัก'),
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => BookingScreen(location: loc),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              LocationQuests(locationId: loc.locationId),
-              if (missionsHere.isNotEmpty) ...[
-                const Text(
-                  'ภารกิจ (Missions)',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...missionsHere.map(
-                  (m) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      m.completed ? Icons.check_circle : Icons.flag_outlined,
-                      color: m.completed ? AppColors.success : Colors.grey,
-                    ),
-                    title: Text(m.title),
-                    subtitle: Text(
-                      m.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ],
-              if (shopsHere.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'ร้านค้าพันธมิตร',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...shopsHere.map(
-                  (s) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(radius: 18, backgroundColor: s.cat.color, child: Icon(s.cat.icon, size: 18, color: Colors.white)),
-                    title: Text(s.nameTh),
-                    subtitle: Text('${s.cat.label} · ${s.openNow ? 'เปิดอยู่' : 'ปิดอยู่'}'),
-                    trailing: s.hasPrivilege ? const Icon(Icons.card_giftcard, size: 20, color: AppColors.gold) : null,
-                    onTap: () => showShopDetail(context, s),
-                  ),
-                ),
-              ],
-            ],
-          ),
+          child: PlaceDetailContent(loc: loc, missions: missionsHere, shops: shopsHere, inSheet: true),
         ),
       ),
     );
