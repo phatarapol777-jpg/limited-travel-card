@@ -8,10 +8,11 @@ const { TRADE_TTL_MS, resolveTrade, expireTrades, completeTrade } = require('../
 const router = express.Router();
 const MAX_PENDING_OUT = 20;
 
-const name = (u) => (u ? `${u.first_name} ${u.last_name}`.trim() : '');
+// People are shown by the display name they chose for the community (the username when they never set one), never the real name.
+const name = (u) => (u ? u.display_name || u.username : '');
 
 function tradeView(t) {
-  const user = (id) => db.prepare('SELECT user_id, username, first_name, last_name FROM users WHERE user_id = ?').get(id);
+  const user = (id) => db.prepare('SELECT user_id, username, display_name FROM users WHERE user_id = ?').get(id);
   const from = user(t.from_user_id);
   const to = user(t.to_user_id);
   return {

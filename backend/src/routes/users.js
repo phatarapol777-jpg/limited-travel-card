@@ -10,10 +10,10 @@ router.get('/search', authMiddleware, (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2 || q.length > 40) return res.json({ users: [] });
   const like = `%${q.replace(/[%_\\]/g, '\\$&')}%`;
-  const rows = db.prepare(`SELECT user_id, username, first_name, last_name FROM users
-    WHERE user_id != ? AND is_admin = 0 AND (username LIKE ? ESCAPE '\\' OR user_id = ?) ORDER BY username LIMIT 10`)
-    .all(req.user.user_id, like, q);
-  res.json({ users: rows.map((u) => ({ user_id: u.user_id, username: u.username, name: `${u.first_name} ${u.last_name}`.trim() })) });
+  const rows = db.prepare(`SELECT user_id, username, display_name FROM users
+    WHERE user_id != ? AND is_admin = 0 AND username NOT LIKE 'deleted-%' AND (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\' OR user_id = ?) ORDER BY username LIMIT 10`)
+    .all(req.user.user_id, like, like, q);
+  res.json({ users: rows.map((u) => ({ user_id: u.user_id, username: u.username, name: u.display_name || u.username })) });
 });
 
 // The cards a traveler could trade right now (activated and not locked in another offer): used to pick a swap target.

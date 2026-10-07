@@ -8,7 +8,7 @@ const MAX_PINS = 5;
 
 function profileOf(user) {
   return {
-    user: { user_id: user.user_id, username: user.username, name: `${user.first_name} ${user.last_name}`.trim() },
+    user: { user_id: user.user_id, username: user.username, name: user.display_name || user.username },
     pins: pinsFor(user.user_id),
     stats: statsFor(user.user_id),
   };

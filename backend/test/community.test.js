@@ -395,3 +395,18 @@ test('the leaderboard endpoint is public and carries months, rows and my rank', 
   assert.equal((await s.call('GET', '/community/leaderboard?month=1999-01')).body.month, lb.month, 'an unknown month falls back to the current one');
   assert.equal((await s.call('GET', '/community/leaderboard')).body.my_rank, null, 'signed out has no rank');
 });
+
+test('a changed display name is what everyone sees: user search and the card showcase never show the real name', async () => {
+  const a = await s.register('namea');
+  const b = await s.register('nameb');
+  await s.call('PUT', '/community/me', { display_name: 'ชื่อใหม่ของเอ' }, a.token);
+  // search by the display name finds the person and returns it as the name
+  const found = (await s.call('GET', `/users/search?q=${encodeURIComponent('ชื่อใหม่')}`, undefined, b.token)).body.users;
+  assert.deepEqual(found.map((u) => [u.username, u.name]), [[a.username, 'ชื่อใหม่ของเอ']]);
+  const plain = (await s.call('GET', `/users/search?q=${a.username}`, undefined, a.token)).body.users;
+  assert.equal(plain.length, 0, 'you do not find yourself');
+  // someone who never set a name shows as their username, not "nameb T"
+  const other = (await s.call('GET', `/users/search?q=${b.username}`, undefined, cat.token)).body.users;
+  assert.equal(other[0].name, b.username);
+  assert.equal((await s.call('GET', `/profile/${a.username}`, undefined, b.token)).body.user.name, 'ชื่อใหม่ของเอ');
+});
