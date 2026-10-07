@@ -51,6 +51,63 @@ class AuthorName extends StatelessWidget {
   }
 }
 
+/// A small "ติดตาม / กำลังติดตาม" button for any person shown in the community. Hidden for yourself and for deleted accounts.
+class FollowButton extends StatefulWidget {
+  final Author author;
+  const FollowButton({super.key, required this.author});
+
+  @override
+  State<FollowButton> createState() => _FollowButtonState();
+}
+
+class _FollowButtonState extends State<FollowButton> {
+  bool _busy = false;
+
+  Future<void> _toggle(bool following) async {
+    final username = widget.author.username;
+    setState(() => _busy = true);
+    try {
+      if (following) {
+        await apiClient.delete('/community/users/${Uri.encodeComponent(username)}/follow');
+      } else {
+        await apiClient.post('/community/users/${Uri.encodeComponent(username)}/follow');
+      }
+      followState.value = {...followState.value, username: !following};
+      followingFeedStale = true;
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.author;
+    if (a.isMe || a.username.isEmpty || a.username == 'deleted') return const SizedBox.shrink();
+    return ValueListenableBuilder<Map<String, bool>>(
+      valueListenable: followState,
+      builder: (context, _, __) {
+        final following = a.isFollowing;
+        return SizedBox(
+          height: 32,
+          child: following
+              ? OutlinedButton(
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), visualDensity: VisualDensity.compact),
+                  onPressed: _busy ? null : () => _toggle(true),
+                  child: const Text('กำลังติดตาม', style: TextStyle(fontSize: 12)),
+                )
+              : ElevatedButton(
+                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), minimumSize: const Size(0, 32), visualDensity: VisualDensity.compact),
+                  onPressed: _busy ? null : () => _toggle(false),
+                  child: const Text('ติดตาม', style: TextStyle(fontSize: 12)),
+                ),
+        );
+      },
+    );
+  }
+}
+
 void openProfile(BuildContext context, String username) {
   if (username.isEmpty || username == 'deleted') return;
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => CommunityProfileScreen(username: username)));
@@ -300,6 +357,7 @@ class _PostCardState extends State<PostCard> {
                 ]),
               ),
             ),
+            if (!post.isMine) Padding(padding: const EdgeInsets.only(right: 2), child: FollowButton(author: post.author)),
             PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'edit') _edit();

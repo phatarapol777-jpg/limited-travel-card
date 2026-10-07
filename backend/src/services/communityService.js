@@ -68,7 +68,7 @@ function inList(ids) {
 }
 
 // ---- who wrote it: the only identity the community ever shows ------------------------------------------------------------------
-function authorViews(userIds) {
+function authorViews(userIds, viewerId = null) {
   const ids = [...new Set(userIds)];
   const map = new Map();
   if (!ids.length) return map;
@@ -76,9 +76,12 @@ function authorViews(userIds) {
       b.badge_id, b.icon, b.title, b.rank_position, b.awarded_month
     FROM users u LEFT JOIN user_badges b ON b.badge_id = u.selected_badge_id AND b.user_id = u.user_id
     WHERE u.user_id IN (${inList(ids)})`).all(...ids);
+  const followed = new Set(viewerId ? db.prepare(`SELECT following_user_id FROM follows WHERE follower_user_id = ? AND following_user_id IN (${inList(ids)})`).all(viewerId, ...ids).map((f) => f.following_user_id) : []);
   for (const r of rows) {
     const gone = r.username.startsWith('deleted-');
     map.set(r.user_id, {
+      is_me: !!viewerId && viewerId === r.user_id,
+      is_following: followed.has(r.user_id),
       username: gone ? 'deleted' : r.username,
       display_name: gone ? 'ผู้ใช้ที่ลบบัญชี' : (r.display_name || r.username),
       has_avatar: !gone && !!r.has_avatar,
@@ -89,14 +92,14 @@ function authorViews(userIds) {
   return map;
 }
 
-const authorView = (userId) => authorViews([userId]).get(userId) || null;
+const authorView = (userId, viewerId = null) => authorViews([userId], viewerId).get(userId) || null;
 
 // ---- posts ---------------------------------------------------------------------------------------------------------------------
 function postViews(rows, viewerId) {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.post_id);
   const marks = inList(ids);
-  const authors = authorViews(rows.map((r) => r.user_id));
+  const authors = authorViews(rows.map((r) => r.user_id), viewerId);
 
   const images = new Map();
   for (const i of db.prepare(`SELECT image_id, post_id FROM post_images WHERE post_id IN (${marks}) ORDER BY position`).all(...ids)) {

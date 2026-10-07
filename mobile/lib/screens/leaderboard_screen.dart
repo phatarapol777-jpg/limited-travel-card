@@ -94,7 +94,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                         child: r.rank <= 3 ? Icon(Icons.workspace_premium, color: _medal(r.rank), size: 32) : Center(child: Text('${r.rank}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                       ),
                       title: Row(children: [AuthorAvatar(author: r.author, radius: 16), const SizedBox(width: 10), Expanded(child: AuthorName(author: r.author))]),
-                      trailing: Text('${r.uniqueCount} แห่ง', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navy)),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text('${r.uniqueCount} แห่ง', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.navy)), if (!r.isMe) ...[const SizedBox(width: 8), FollowButton(author: r.author)]]),
                       onTap: () => openProfile(context, r.author.username),
                     ),
                   ),

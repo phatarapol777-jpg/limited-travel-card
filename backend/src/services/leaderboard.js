@@ -89,7 +89,7 @@ function finalizePastMonths(now = Date.now()) {
 }
 
 /** The table for one month: live for the running month, the stored final result for a closed one. */
-function leaderboard(ym, now = Date.now()) {
+function leaderboard(ym, now = Date.now(), viewerId = null) {
   finalizePastMonths(now);
   const current = bangkokMonth(now);
   let rows;
@@ -99,7 +99,7 @@ function leaderboard(ym, now = Date.now()) {
     rows = db.prepare(`SELECT s.user_id, s.rank_position AS rank, s.unique_count FROM checkin_monthly_stats s JOIN users u ON u.user_id = s.user_id
       WHERE s.year_month = ? AND u.username NOT LIKE 'deleted-%' ORDER BY s.rank_position LIMIT 50`).all(ym);
   }
-  const authors = authorViews(rows.map((r) => r.user_id));
+  const authors = authorViews(rows.map((r) => r.user_id), viewerId);
   return { month: ym, label: monthLabel(ym), finalized: ym !== current, rows: rows.map((r) => ({ rank: r.rank, unique_count: r.unique_count, author: authors.get(r.user_id), user_id: r.user_id })) };
 }
 

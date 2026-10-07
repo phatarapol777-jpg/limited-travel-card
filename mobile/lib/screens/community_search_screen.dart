@@ -85,7 +85,7 @@ class _CommunitySearchScreenState extends State<CommunitySearchScreen> {
         if (nothing) const Padding(padding: EdgeInsets.all(30), child: Text('ไม่พบผลการค้นหา', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))),
         if (_users.isNotEmpty) ...[
           const Text('ผู้ใช้', style: TextStyle(fontWeight: FontWeight.bold)),
-          ..._users.map((u) => ListTile(contentPadding: EdgeInsets.zero, leading: AuthorAvatar(author: u), title: AuthorName(author: u), subtitle: Text('@${u.username}'), onTap: () => openProfile(context, u.username))),
+          ..._users.map((u) => ListTile(contentPadding: EdgeInsets.zero, leading: AuthorAvatar(author: u), title: AuthorName(author: u), subtitle: Text('@${u.username}'), trailing: FollowButton(author: u), onTap: () => openProfile(context, u.username))),
         ],
         if (_tags.isNotEmpty) ...[
           const Text('แฮชแท็ก', style: TextStyle(fontWeight: FontWeight.bold)),

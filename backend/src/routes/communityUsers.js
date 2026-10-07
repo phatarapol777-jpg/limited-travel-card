@@ -15,7 +15,7 @@ function publicUser(username) {
 }
 
 function profileView(user, viewerId) {
-  const author = C.authorView(user.user_id);
+  const author = C.authorView(user.user_id, viewerId);
   const following = viewerId ? !!db.prepare('SELECT 1 FROM follows WHERE follower_user_id = ? AND following_user_id = ?').get(viewerId, user.user_id) : false;
   return {
     ...author,
@@ -111,7 +111,7 @@ function peopleList(req, res, mine, theirs) {
   if (!user) return res.status(404).json({ error: 'ไม่พบผู้ใช้' });
   const ids = db.prepare(`SELECT ${mine} AS id FROM follows f JOIN users u ON u.user_id = f.${mine} WHERE f.${theirs} = ? AND u.username NOT LIKE 'deleted-%'
     ORDER BY f.created_at DESC LIMIT 100`).all(user.user_id).map((r) => r.id);
-  const authors = C.authorViews(ids);
+  const authors = C.authorViews(ids, C.optionalUserId(req));
   res.json({ users: ids.map((id) => authors.get(id)) });
 }
 router.get('/users/:username/followers', (req, res) => peopleList(req, res, 'follower_user_id', 'following_user_id'));
@@ -120,8 +120,8 @@ router.get('/users/:username/following', (req, res) => peopleList(req, res, 'fol
 router.get('/leaderboard', (req, res) => {
   const months = board.availableMonths();
   const month = months.includes(req.query.month) ? req.query.month : months[0];
-  const result = board.leaderboard(month);
   const viewerId = C.optionalUserId(req);
+  const result = board.leaderboard(month, Date.now(), viewerId);
   const mine = viewerId ? result.rows.find((r) => r.user_id === viewerId) : null;
   res.json({
     month: result.month,

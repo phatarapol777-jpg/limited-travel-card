@@ -4,6 +4,13 @@ import '../services/api_client.dart';
 /// Bumped when something that appears inside posts changed (display name, picture, badge, a new post...), so every open feed reloads.
 final ValueNotifier<int> communityRefresh = ValueNotifier<int>(0);
 
+/// Who the signed-in user follows, as far as this session knows (username -> followed). A follow button anywhere updates it, so every
+/// button for that person (on posts, comments, search, profile) shows the same state at once.
+final ValueNotifier<Map<String, bool>> followState = ValueNotifier<Map<String, bool>>({});
+
+/// True when a follow or unfollow happened and the "following" feed should be fetched again when it is opened.
+bool followingFeedStale = false;
+
 const reactionTypes = ['LIKE', 'LOVE', 'WOW', 'SAD', 'ANGRY'];
 const reactionEmoji = {'LIKE': '👍', 'LOVE': '❤️', 'WOW': '😮', 'SAD': '😢', 'ANGRY': '😡'};
 const reactionLabel = {'LIKE': 'ถูกใจ', 'LOVE': 'รักเลย', 'WOW': 'ว้าว', 'SAD': 'เศร้า', 'ANGRY': 'โกรธ'};
@@ -50,7 +57,11 @@ class Author {
   final bool hasAvatar;
   final int avatarRev;
   final AuthorBadge? badge;
-  Author({required this.username, required this.displayName, this.hasAvatar = false, this.avatarRev = 0, this.badge});
+  final bool isMe;
+  final bool _isFollowing;
+  Author({required this.username, required this.displayName, this.hasAvatar = false, this.avatarRev = 0, this.badge, this.isMe = false, bool isFollowing = false}) : _isFollowing = isFollowing;
+
+  bool get isFollowing => followState.value[username] ?? _isFollowing;
 
   String? get avatar => hasAvatar ? avatarUrl(username, avatarRev) : null;
 
@@ -62,6 +73,8 @@ class Author {
       hasAvatar: j['has_avatar'] == true,
       avatarRev: (j['avatar_rev'] as num?)?.toInt() ?? 0,
       badge: j['badge'] == null ? null : AuthorBadge.fromJson(j['badge'] as Map<String, dynamic>),
+      isMe: j['is_me'] == true,
+      isFollowing: j['is_following'] == true,
     );
   }
 }

@@ -410,3 +410,23 @@ test('a changed display name is what everyone sees: user search and the card sho
   assert.equal(other[0].name, b.username);
   assert.equal((await s.call('GET', `/profile/${a.username}`, undefined, b.token)).body.user.name, 'ชื่อใหม่ของเอ');
 });
+
+test('every author carries is_me and is_following for the viewer, so a follow button can sit next to any name', async () => {
+  const x = await s.register('fx');
+  const y = await s.register('fy');
+  const id = (await post({ content: 'โพสต์ให้ติดตาม' }, y)).body.post_id;
+  await s.call('POST', `/community/posts/${id}/comments`, { content: 'คอมเมนต์ของ x' }, x.token);
+  const authorOf = async (token) => (await s.call('GET', `/community/posts/${id}`, undefined, token)).body.post.author;
+  assert.deepEqual([(await authorOf(x.token)).is_following, (await authorOf(x.token)).is_me], [false, false]);
+  assert.equal((await authorOf(y.token)).is_me, true);
+  assert.equal((await authorOf()).is_following, false, 'signed out: nobody is followed');
+  await s.call('POST', `/community/users/${y.username}/follow`, {}, x.token);
+  assert.equal((await authorOf(x.token)).is_following, true);
+  assert.equal((await s.call('GET', `/community/posts/${id}/comments`, undefined, y.token)).body.comments[0].author.is_following, false, 'y does not follow x');
+  const found = (await s.call('GET', `/community/search?q=${y.username}`, undefined, x.token)).body.users;
+  assert.equal(found[0].is_following, true);
+  const followers = (await s.call('GET', `/community/users/${y.username}/followers`, undefined, y.token)).body.users;
+  assert.deepEqual([followers[0].username, followers[0].is_following], [x.username, false]);
+  const feedAuthor = (await feed('?tab=following&limit=5', x)).body.posts[0].author;
+  assert.equal(feedAuthor.username, y.username);
+});

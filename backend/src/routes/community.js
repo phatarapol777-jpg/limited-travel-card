@@ -203,7 +203,7 @@ router.post('/posts/:id/like', authMiddleware, (req, res) => {
 
 // ---- comments ------------------------------------------------------------------------------------------------------------------
 function commentViews(rows, viewerId) {
-  const authors = C.authorViews(rows.map((r) => r.user_id));
+  const authors = C.authorViews(rows.map((r) => r.user_id), viewerId);
   return rows.map((c) => ({
     comment_id: c.comment_id,
     post_id: c.post_id,
@@ -310,7 +310,7 @@ router.get('/search', (req, res) => {
   const like = `%${C.escapeLike(q)}%`;
   const users = db.prepare(`SELECT user_id FROM users WHERE is_admin = 0 AND username NOT LIKE 'deleted-%' AND (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\')
     ORDER BY username LIMIT 10`).all(like, like);
-  const authors = C.authorViews(users.map((u) => u.user_id));
+  const authors = C.authorViews(users.map((u) => u.user_id), viewerId);
   const posts = db.prepare("SELECT * FROM community_posts WHERE status = 'visible' AND content LIKE ? ESCAPE '\\' ORDER BY timestamp DESC, post_id DESC LIMIT 20").all(like);
   res.json({ users: users.map((u) => authors.get(u.user_id)), tags: [], posts: C.postViews(posts, viewerId) });
 });

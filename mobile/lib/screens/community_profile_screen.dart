@@ -63,6 +63,8 @@ class _CommunityProfileScreenState extends State<CommunityProfileScreen> {
       } else {
         await apiClient.post('/community/users/${p.author.username}/follow');
       }
+      followState.value = {...followState.value, p.author.username: !p.isFollowing};
+      followingFeedStale = true;
       await _load();
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -221,6 +223,7 @@ class _PeopleSheetState extends State<_PeopleSheet> {
                                   leading: AuthorAvatar(author: a),
                                   title: AuthorName(author: a),
                                   subtitle: Text('@${a.username}'),
+                                  trailing: FollowButton(author: a),
                                   onTap: () {
                                     Navigator.of(context).pop();
                                     openProfile(context, a.username);

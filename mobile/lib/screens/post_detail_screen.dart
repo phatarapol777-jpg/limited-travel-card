@@ -125,7 +125,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.circular(14)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  GestureDetector(onTap: () => openProfile(context, c.author.username), child: AuthorName(author: c.author, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                  Row(children: [
+                    Flexible(child: GestureDetector(onTap: () => openProfile(context, c.author.username), child: AuthorName(author: c.author, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)))),
+                    if (!c.isMine && !c.author.isMe && !c.author.isFollowing) ...[const SizedBox(width: 6), GestureDetector(onTap: () => openProfile(context, c.author.username), child: const Text('ดูโปรไฟล์', style: TextStyle(fontSize: 11, color: AppColors.rareBlue)))],
+                  ]),
                   if (c.content.isNotEmpty) HashtagText(text: c.content),
                   if (c.hasImage)
                     Padding(
